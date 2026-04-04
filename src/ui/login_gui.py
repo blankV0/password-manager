@@ -1,11 +1,15 @@
 """
-Interface gráfica principal da aplicação.
-Ponto de entrada da aplicação de login com nova interface.
+Interface gráfica principal — Login & Registo.
+
+Design split-screen com painel de marca à esquerda e formulário à direita.
+Inclui animação do ícone de cadeado, fade-in, focus glow, toggle de
+password e estado de loading no botão de submit.
 """
 
 import tkinter as tk
 from tkinter import messagebox
 import logging
+import math
 from datetime import datetime, timedelta
 from typing import Callable, Optional
 
@@ -29,75 +33,416 @@ from src.ui.password_strength import PasswordStrengthBar
 # Configurar logging
 configure_logging(APP_LOG_FILE)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Design tokens
+# ─────────────────────────────────────────────────────────────────────────────
+_BRAND_BG = "#1a1d23"          # Painel esquerdo (quase preto)
+_BRAND_ACCENT = "#6c63ff"      # Roxo/lilás da marca
+_BRAND_ACCENT_HOVER = "#5a52e0"
+_BRAND_TEXT = "#ffffff"
+_BRAND_MUTED = "#9ca3af"
+
+_FORM_BG = "#ffffff"           # Painel direito (branco)
+_FORM_TEXT = "#1f2937"
+_FORM_MUTED = "#6b7280"
+_FORM_BORDER = "#e5e7eb"
+_FORM_FOCUS = _BRAND_ACCENT    # Cor do focus glow
+_FORM_SUCCESS = "#22c55e"
+_FORM_ERROR = "#ef4444"
+
+_TOPBAR_DARK = _BRAND_BG
+_TOPBAR_LIGHT = _FORM_BG
+
+_FONT = "Segoe UI"
+
+# Proporção do painel esquerdo (0.38 = 38% da largura)
+_LEFT_RATIO = 0.38
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers — animação & widgets reutilizáveis
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _AnimatedLock:
+    """Desenha um cadeado animado num tk.Canvas.
+
+    A animação é um pulso suave de escala (breathe) que corre
+    continuamente enquanto o Canvas existir.
+    """
+
+    _SIZE = 80           # Dimensão do canvas (px)
+    _PERIOD_MS = 2400    # Duração de um ciclo completo
+    _STEP_MS = 30        # Intervalo entre frames (~33 fps)
+    _MIN_SCALE = 0.92
+    _MAX_SCALE = 1.0
+
+    def __init__(self, parent: tk.Widget, bg: str = _BRAND_BG):
+        self.canvas = tk.Canvas(
+            parent, width=self._SIZE, height=self._SIZE,
+            bg=bg, highlightthickness=0,
+        )
+        self._bg = bg
+        self._phase = 0.0
+        self._running = True
+        self.canvas.bind("<Destroy>", lambda _: self._stop())
+        self._tick()
+
+    def _stop(self):
+        self._running = False
+
+    def _tick(self):
+        if not self._running:
+            return
+        self._phase += (self._STEP_MS / self._PERIOD_MS) * 2 * math.pi
+        scale = self._MIN_SCALE + (self._MAX_SCALE - self._MIN_SCALE) * (0.5 + 0.5 * math.sin(self._phase))
+        self._draw(scale)
+        self.canvas.after(self._STEP_MS, self._tick)
+
+    def _draw(self, s: float):
+        """Redesenha o cadeado com escala *s* (0.0–1.0)."""
+        c = self.canvas
+        c.delete("all")
+        cx, cy = self._SIZE / 2, self._SIZE / 2
+
+        # Arco (shackle)
+        r = 16 * s
+        arc_y = cy - 8 * s
+        c.create_arc(
+            cx - r, arc_y - r, cx + r, arc_y + r,
+            start=0, extent=180, style="arc",
+            outline=_BRAND_ACCENT, width=max(1, int(3.5 * s)),
+        )
+
+        # Corpo
+        bw = 26 * s
+        bh = 20 * s
+        body_y = cy + 2 * s
+        c.create_rectangle(
+            cx - bw / 2, body_y - bh / 2, cx + bw / 2, body_y + bh / 2,
+            fill=_BRAND_ACCENT, outline="",
+        )
+
+        # Buraco da fechadura
+        kr = 3.5 * s
+        c.create_oval(
+            cx - kr, body_y - kr - 1, cx + kr, body_y + kr - 1,
+            fill=self._bg, outline="",
+        )
+        kw = 2 * s
+        kh = 5 * s
+        c.create_rectangle(
+            cx - kw / 2, body_y + 1, cx + kw / 2, body_y + kh + 1,
+            fill=self._bg, outline="",
+        )
+
+
+class _FocusEntry(tk.Entry):
+    """Entry com glow animado no focus e placeholder."""
+
+    def __init__(self, master, placeholder: str = "", show: str = "", **kw):
+        kw.setdefault("font", (_FONT, 12))
+        kw.setdefault("relief", "flat")
+        kw.setdefault("highlightthickness", 2)
+        kw.setdefault("highlightbackground", _FORM_BORDER)
+        kw.setdefault("highlightcolor", _FORM_FOCUS)
+        kw.setdefault("bg", "#f9fafb")
+        kw.setdefault("fg", _FORM_TEXT)
+        kw.setdefault("insertbackground", _FORM_TEXT)
+
+        self._show_char = show
+        self._placeholder = placeholder
+        self._has_real_text = False
+
+        super().__init__(master, **kw)
+
+        if placeholder:
+            self._show_placeholder()
+            self.bind("<FocusIn>", self._on_focus_in)
+            self.bind("<FocusOut>", self._on_focus_out)
+
+    # ── placeholder ──
+    def _show_placeholder(self):
+        self.config(show="", fg=_FORM_MUTED)
+        self.delete(0, "end")
+        self.insert(0, self._placeholder)
+        self._has_real_text = False
+
+    def _on_focus_in(self, _e=None):
+        if not self._has_real_text:
+            self.delete(0, "end")
+            self.config(show=self._show_char, fg=_FORM_TEXT)
+            self._has_real_text = True
+
+    def _on_focus_out(self, _e=None):
+        if not self.get():
+            self._show_placeholder()
+
+    def get_value(self) -> str:
+        """Retorna o texto real (ignora placeholder)."""
+        if not self._has_real_text:
+            return ""
+        return self.get()
+
+
+class _PasswordField(tk.Frame):
+    """Campo de password com toggle show/hide."""
+
+    def __init__(self, master, placeholder: str = "", **kw):
+        super().__init__(master, bg=kw.get("bg", _FORM_BG))
+
+        container = tk.Frame(self, bg="#f9fafb", highlightthickness=2,
+                             highlightbackground=_FORM_BORDER, highlightcolor=_FORM_FOCUS)
+        container.pack(fill="x")
+
+        self.entry = _FocusEntry(
+            container, placeholder=placeholder, show="●",
+            highlightthickness=0, bg="#f9fafb", bd=0,
+        )
+        self.entry.pack(side="left", fill="both", expand=True, ipady=8, padx=(10, 0))
+
+        self._visible = False
+        self.toggle_btn = tk.Label(
+            container, text="👁", bg="#f9fafb", fg=_FORM_MUTED,
+            font=(_FONT, 12), cursor="hand2", padx=10,
+        )
+        self.toggle_btn.pack(side="right", fill="y")
+        self.toggle_btn.bind("<Button-1>", self._toggle)
+
+    def _toggle(self, _e=None):
+        self._visible = not self._visible
+        if self.entry._has_real_text:
+            self.entry.config(show="" if self._visible else "●")
+        self.toggle_btn.config(
+            text="🙈" if self._visible else "👁",
+            fg=_BRAND_ACCENT if self._visible else _FORM_MUTED,
+        )
+
+    def get_value(self) -> str:
+        return self.entry.get_value()
+
+    def bind_enter(self, callback):
+        self.entry.bind("<Return>", callback)
+
+
+class _ActionButton(tk.Canvas):
+    """Botão flat com hover suave, cantos arredondados e estado loading."""
+
+    _HEIGHT = 46
+    _RADIUS = 10
+
+    def __init__(self, master, text: str, command: Callable,
+                 bg_color: str = _BRAND_ACCENT, fg_color: str = "#ffffff",
+                 hover_color: str = _BRAND_ACCENT_HOVER, width: int = 340):
+        super().__init__(master, height=self._HEIGHT, bg=_FORM_BG,
+                         highlightthickness=0, bd=0)
+        self._text = text
+        self._command = command
+        self._bg = bg_color
+        self._fg = fg_color
+        self._hover = hover_color
+        self._current_bg = bg_color
+        self._loading = False
+        self._dots = 0
+        self._width = width
+
+        self.bind("<Configure>", self._on_resize)
+        self.bind("<Enter>", lambda _: self._set_bg(self._hover))
+        self.bind("<Leave>", lambda _: self._set_bg(self._bg))
+        self.bind("<Button-1>", lambda _: self._on_click())
+        self.config(cursor="hand2")
+
+    def _set_bg(self, color: str):
+        if self._loading:
+            return
+        self._current_bg = color
+        self._redraw()
+
+    def _on_resize(self, _e=None):
+        self._redraw()
+
+    def _redraw(self):
+        self.delete("all")
+        w = self.winfo_width() or self._width
+        h = self._HEIGHT
+        r = self._RADIUS
+        # Rounded rect
+        self.create_arc(0, 0, 2 * r, 2 * r, start=90, extent=90, fill=self._current_bg, outline="")
+        self.create_arc(w - 2 * r, 0, w, 2 * r, start=0, extent=90, fill=self._current_bg, outline="")
+        self.create_arc(0, h - 2 * r, 2 * r, h, start=180, extent=90, fill=self._current_bg, outline="")
+        self.create_arc(w - 2 * r, h - 2 * r, w, h, start=270, extent=90, fill=self._current_bg, outline="")
+        self.create_rectangle(r, 0, w - r, h, fill=self._current_bg, outline="")
+        self.create_rectangle(0, r, w, h - r, fill=self._current_bg, outline="")
+        # Text
+        display = self._text if not self._loading else "A verificar" + "." * (self._dots % 4)
+        self.create_text(w / 2, h / 2, text=display, fill=self._fg, font=(_FONT, 12, "bold"))
+
+    def _on_click(self):
+        if self._loading:
+            return
+        self._command()
+
+    def set_loading(self, loading: bool):
+        self._loading = loading
+        if loading:
+            self._current_bg = _FORM_MUTED
+            self.config(cursor="wait")
+            self._animate_dots()
+        else:
+            self._current_bg = self._bg
+            self.config(cursor="hand2")
+            self._dots = 0
+        self._redraw()
+
+    def _animate_dots(self):
+        if not self._loading:
+            return
+        self._dots += 1
+        self._redraw()
+        self.after(400, self._animate_dots)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers — layout partilhado (titlebar, split-screen)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_titlebar(parent, login_app: "LoginApp"):
+    """Constrói a barra de título custom split dark/light."""
+    bar = tk.Frame(parent, height=35, bg=_TOPBAR_LIGHT)
+    bar.pack(fill="x", side="top")
+    bar.pack_propagate(False)
+
+    left = tk.Frame(bar, bg=_TOPBAR_DARK, height=35)
+    left.pack(side="left", fill="y")
+    # A largura é dinâmica — será ajustada pelo <Configure> do parent
+
+    right = tk.Frame(bar, bg=_TOPBAR_LIGHT, height=35)
+    right.pack(side="left", fill="both", expand=True)
+
+    for f in (bar, left, right):
+        f.bind("<Button-1>", login_app.start_move)
+        f.bind("<B1-Motion>", login_app.mover_janela)
+
+    # Botão fechar
+    btn_close = tk.Label(right, text="✕", bg=_TOPBAR_LIGHT, fg=_FORM_TEXT,
+                         font=(_FONT, 11), width=4, cursor="hand2")
+    btn_close.pack(side="right", fill="y")
+    btn_close.bind("<Enter>", lambda e: btn_close.config(bg="#e74c3c", fg="white"))
+    btn_close.bind("<Leave>", lambda e: btn_close.config(bg=_TOPBAR_LIGHT, fg=_FORM_TEXT))
+    btn_close.bind("<Button-1>", lambda e: login_app.root.destroy())
+
+    # Botão minimizar
+    btn_min = tk.Label(right, text="—", bg=_TOPBAR_LIGHT, fg=_FORM_TEXT,
+                       font=(_FONT, 11), width=4, cursor="hand2")
+    btn_min.pack(side="right", fill="y")
+    btn_min.bind("<Enter>", lambda e: btn_min.config(bg="#e5e5e5"))
+    btn_min.bind("<Leave>", lambda e: btn_min.config(bg=_TOPBAR_LIGHT, fg=_FORM_TEXT))
+    btn_min.bind("<Button-1>", lambda e: login_app.minimizar())
+
+    return bar, left
+
+
+def _build_brand_panel(parent):
+    """Constrói o painel de marca (esquerdo) com lock animado + features."""
+    panel = tk.Frame(parent, bg=_BRAND_BG)
+
+    # Spacer topo
+    tk.Frame(panel, bg=_BRAND_BG, height=40).pack()
+
+    # Lock animado
+    lock = _AnimatedLock(panel, bg=_BRAND_BG)
+    lock.canvas.pack(pady=(0, 24))
+
+    # Título da marca
+    tk.Label(
+        panel, text="Password\nManager",
+        font=(_FONT, 26, "bold"), bg=_BRAND_BG, fg=_BRAND_TEXT,
+        justify="center",
+    ).pack(pady=(0, 8))
+
+    tk.Label(
+        panel, text="O seu cofre digital seguro.",
+        font=(_FONT, 11), bg=_BRAND_BG, fg=_BRAND_MUTED,
+    ).pack(pady=(0, 32))
+
+    # Separador
+    sep = tk.Frame(panel, bg="#2d3139", height=1)
+    sep.pack(fill="x", padx=32, pady=(0, 28))
+
+    # Features
+    features = [
+        ("🔐", "AES-256-GCM", "Encriptação de nível militar"),
+        ("🛡", "Argon2id", "Hash de passwords OWASP"),
+        ("☁", "Sync seguro", "Servidor dedicado via VPN"),
+    ]
+    for emoji, title, desc in features:
+        row = tk.Frame(panel, bg=_BRAND_BG)
+        row.pack(fill="x", padx=32, pady=6)
+
+        tk.Label(
+            row, text=emoji, font=(_FONT, 16), bg=_BRAND_BG,
+        ).pack(side="left", padx=(0, 12))
+
+        text_col = tk.Frame(row, bg=_BRAND_BG)
+        text_col.pack(side="left")
+
+        tk.Label(
+            text_col, text=title,
+            font=(_FONT, 11, "bold"), bg=_BRAND_BG, fg=_BRAND_TEXT,
+            anchor="w",
+        ).pack(anchor="w")
+
+        tk.Label(
+            text_col, text=desc,
+            font=(_FONT, 9), bg=_BRAND_BG, fg=_BRAND_MUTED,
+            anchor="w",
+        ).pack(anchor="w")
+
+    return panel
+
+
+def _fade_in(widget: tk.Widget, duration_ms: int = 400, steps: int = 12, _step: int = 0):
+    """Fade-in suave de um widget usando lift/place alpha trick.
+
+    Tkinter não suporta opacidade por widget, então simulamos com
+    uma série rápida de place() com offsets decrescentes que dão
+    a ilusão de um slide-up + fade.
+    """
+    if _step > steps:
+        return
+    # slide-up: começa 15px abaixo e sobe até 0
+    offset = int(15 * (1 - _step / steps))
+    widget.place_configure(rely=0.5, y=offset)
+    widget.after(duration_ms // steps, _fade_in, widget, duration_ms, steps, _step + 1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LoginApp
+# ─────────────────────────────────────────────────────────────────────────────
 
 class LoginApp:
     """Aplicação de Login com interface Tkinter."""
 
     def __init__(self, root: tk.Misc, on_login_success: Optional[Callable[[str], None]] = None):
-        """
-        Inicializa a aplicação.
-
-        Args:
-            root: Janela principal Tkinter/Toplevel
-            on_login_success: callback opcional chamado com access_token após login com sucesso
-        """
         self.root = root
         self.on_login_success = on_login_success
         self.root.title(WINDOW_TITLE)
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.resizable(WINDOW_RESIZABLE, WINDOW_RESIZABLE)
-        self.root.configure(bg="#FFFFFF")
-
-        # A remoção da titlebar nativa e composição DWM são tratadas
-        # pelo AppController (main.py).  LoginApp NÃO deve tocar no
-        # estilo Win32 da janela para evitar conflitos.
-        
-        # Design tokens e cores
-        self.design_tokens = {
-            "color.bg": "#FFFFFF",
-            "color.card": "#FFFFFF",
-            "color.text": "#1f2937",
-            "color.muted": "#6b7280",
-            "color.primary": "#2C2F33",
-            "color.primary_soft": "#e9efff",
-            "color.accent": "#7c3aed",
-            "color.warning": "#f59e0b",
-            "color.border": "#e6e8ec",
-            "color.shadow": "#000000",
-            "space.4": 4,
-            "space.8": 8,
-            "space.12": 12,
-            "space.16": 16,
-            "space.20": 20,
-            "space.24": 24,
-            "space.32": 32,
-            "radius.12": 12,
-            "radius.16": 16,
-        }
-
-        self.colors = {
-            "bg": self.design_tokens["color.bg"],
-            "card": self.design_tokens["color.card"],
-            "text": self.design_tokens["color.text"],
-            "muted": self.design_tokens["color.muted"],
-            "primary": self.design_tokens["color.primary"],
-            "primary_light": self.design_tokens["color.primary_soft"],
-            "accent": self.design_tokens["color.accent"],
-            "warning": self.design_tokens["color.warning"],
-            "border": self.design_tokens["color.border"],
-            "success": "#22c55e",
-        }
+        self.root.configure(bg=_FORM_BG)
 
         self.local_auth = LocalAuth()
         self.current_view = "login"
         self.login_attempts = {}
         self.current_email = None
         self.session_started_at = None
-        
+
         # Variáveis para dragging
         self.offset_x = 0
         self.offset_y = 0
-        
+
+        # Referências a widgets de formulário
+        self._login_btn: Optional[_ActionButton] = None
+
         # Verificar conectividade com API
         if self.local_auth.disabled:
             messagebox.showerror(
@@ -106,545 +451,310 @@ class LoginApp:
                 "Verifique o arquivo .env e certifique-se de que:\n"
                 "- API_BASE_URL está preenchido\n"
                 "- O servidor de API está ativo\n"
-                "- As configurações de TTL no servidor são válidas (mínimo 60 segundos)"
+                "- As configurações de TTL no servidor são válidas (mínimo 60 segundos)",
             )
             logging.error("[ERRO] API desabilizada - verificar configuração")
-        
+
         self.show_login_view()
         logging.info("[OK] Aplicação iniciada")
 
+    # ── window helpers ──
+
     def start_move(self, event):
-        """Inicia movimento da janela."""
         self.offset_x = event.x_root - self.root.winfo_x()
         self.offset_y = event.y_root - self.root.winfo_y()
 
     def mover_janela(self, event):
-        """Move a janela."""
         self.root.geometry(f"+{event.x_root - self.offset_x}+{event.y_root - self.offset_y}")
 
     def minimizar(self):
-        """Minimiza para a taskbar."""
         self.root.iconify()
 
     def clear_window(self):
-        """Limpa todos os widgets da janela."""
         for widget in self.root.winfo_children():
             widget.destroy()
 
+    def _center_window(self, width: int = WINDOW_WIDTH, height: int = WINDOW_HEIGHT):
+        self.root.update_idletasks()
+        sx = self.root.winfo_screenwidth()
+        sy = self.root.winfo_screenheight()
+        self.root.geometry(f"{width}x{height}+{(sx - width) // 2}+{(sy - height) // 2}")
+
+    # ── rate-limiting ──
+
     def _check_rate_limit(self, key: str) -> bool:
-        """
-        Verifica se o utilizador pode tentar login.
-        Retorna False se atingiu limite de tentativas ou está em cooldown.
-        """
         now = datetime.now()
         record = self.login_attempts.get(key)
-
         if not record:
-            self.login_attempts[key] = {
-                "count": 0,
-                "first_attempt": now,
-                "cooldown_until": None,
-            }
+            self.login_attempts[key] = {"count": 0, "first_attempt": now, "cooldown_until": None}
             return True
-
-        # Verificar se está em cooldown
-        cooldown_until = record.get("cooldown_until")
-        if cooldown_until and now < cooldown_until:
+        if record.get("cooldown_until") and now < record["cooldown_until"]:
             return False
-
-        # Resetar se a janela de tentativas expirou
         if now - record["first_attempt"] > timedelta(seconds=LOGIN_WINDOW_SECONDS):
             record["count"] = 0
             record["first_attempt"] = now
             record["cooldown_until"] = None
             return True
-
-        # Verificar se já atingiu o máximo de tentativas
         if record["count"] >= LOGIN_MAX_ATTEMPTS:
             return False
-
         return True
 
     def _register_failed_attempt(self, key: str) -> None:
         record = self.login_attempts.setdefault(
-            key, {"count": 0, "first_attempt": datetime.now(), "cooldown_until": None}
+            key, {"count": 0, "first_attempt": datetime.now(), "cooldown_until": None},
         )
         record["count"] += 1
-
         if record["count"] >= LOGIN_MAX_ATTEMPTS:
             record["cooldown_until"] = datetime.now() + timedelta(seconds=LOGIN_COOLDOWN_SECONDS)
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # LOGIN VIEW
+    # ══════════════════════════════════════════════════════════════════════════
+
     def show_login_view(self):
-        """Mostra a tela de login."""
         self.clear_window()
         self.current_view = "login"
+        self._center_window()
 
-        # Centralizar janela
-        largura = WINDOW_WIDTH
-        altura = WINDOW_HEIGHT
-        self.root.update_idletasks()
-        screen_largura = self.root.winfo_screenwidth()
-        screen_altura = self.root.winfo_screenheight()
-        x = (screen_largura // 2) - (largura // 2)
-        y = (screen_altura // 2) - (altura // 2)
-        self.root.geometry(f"{largura}x{altura}+{x}+{y}")
+        outer = tk.Frame(self.root, bg=_FORM_BG)
+        outer.pack(fill="both", expand=True)
 
-        # Container principal
-        main_container = tk.Frame(self.root, bg="#FFFFFF")
-        main_container.pack(fill="both", expand=True)
+        # Titlebar
+        _bar, _bar_left = _build_titlebar(outer, self)
 
-        # Barra de Título Customizada
-        barra_topo = tk.Frame(main_container, height=35, bg="white")
-        barra_topo.pack(fill="x", side="top")
+        # Body (split-screen)
+        body = tk.Frame(outer, bg=_FORM_BG)
+        body.pack(fill="both", expand=True)
 
-        barra_esquerda_topo = tk.Frame(barra_topo, bg="#2C2F33", width=210, height=35)
-        barra_esquerda_topo.pack(side="left")
-        barra_esquerda_topo.pack_propagate(False)
+        # Painel esquerdo — marca
+        left_panel = _build_brand_panel(body)
+        left_panel.place(relx=0, rely=0, relwidth=_LEFT_RATIO, relheight=1)
 
-        barra_direita_topo = tk.Frame(barra_topo, bg="white", height=35)
-        barra_direita_topo.pack(side="left", fill="both", expand=True)
+        # Ajustar largura do titlebar dark
+        def _sync_left(_e=None):
+            _bar_left.config(width=int(body.winfo_width() * _LEFT_RATIO))
+        body.bind("<Configure>", _sync_left)
 
-        # Bind para mover janela
-        for frame in (barra_topo, barra_esquerda_topo, barra_direita_topo):
-            frame.bind("<Button-1>", self.start_move)
-            frame.bind("<B1-Motion>", self.mover_janela)
+        # Painel direito — formulário
+        right_panel = tk.Frame(body, bg=_FORM_BG)
+        right_panel.place(relx=_LEFT_RATIO, rely=0, relwidth=1 - _LEFT_RATIO, relheight=1)
 
-        # Botões de Controlo
-        btn_fechar = tk.Label(barra_direita_topo, text="✕", bg="white", fg="black", font=("Segoe UI", 11), width=4, cursor="hand2")
-        btn_fechar.pack(side="right", fill="y")
-        btn_fechar.bind("<Enter>", lambda e: btn_fechar.config(bg="#e5e5e5"))
-        btn_fechar.bind("<Leave>", lambda e: btn_fechar.config(bg="white"))
-        btn_fechar.bind("<Button-1>", lambda e: self.root.destroy())
+        # Card de formulário centrado
+        card = tk.Frame(right_panel, bg=_FORM_BG)
+        card.place(relx=0.5, rely=0.5, anchor="center")
 
-        btn_min = tk.Label(barra_direita_topo, text="—", bg="white", fg="black", font=("Segoe UI", 11), width=4, cursor="hand2")
-        btn_min.pack(side="right", fill="y")
-        btn_min.bind("<Enter>", lambda e: btn_min.config(bg="#e5e5e5"))
-        btn_min.bind("<Leave>", lambda e: btn_min.config(bg="white"))
-        btn_min.bind("<Button-1>", lambda e: self.minimizar())
-
-        # Conteúdo
-        content = tk.Frame(main_container, bg="#FFFFFF")
-        content.pack(fill="both", expand=True)
-        content.place(relx=0.5, rely=0.5, anchor="center")
-
-        card = tk.Frame(content, bg="#FFFFFF")
-        card.pack(padx=24, pady=24)
-
-        # Header
-        header = tk.Frame(card, bg="#FFFFFF")
-        header.pack(fill="x", padx=32, pady=(28, 12))
-
+        # ── Header ──
         tk.Label(
-            header,
-            text="Password Manager",
-            font=("Segoe UI", 12, "bold"),
-            bg="#FFFFFF",
-            fg=self.colors["muted"],
+            card, text="Password Manager",
+            font=(_FONT, 12), bg=_FORM_BG, fg=_BRAND_ACCENT,
         ).pack(anchor="w")
 
         tk.Label(
-            header,
-            text="Entrar",
-            font=("Segoe UI", 28, "bold"),
-            bg="#FFFFFF",
-            fg=self.colors["text"],
-        ).pack(anchor="w", pady=(8, 4))
+            card, text="Entrar",
+            font=(_FONT, 28, "bold"), bg=_FORM_BG, fg=_FORM_TEXT,
+        ).pack(anchor="w", pady=(6, 4))
 
         tk.Label(
-            header,
-            text="Aceda ao seu cofre com segurança e continue de onde ficou.",
-            font=("Segoe UI", 11),
-            bg="#FFFFFF",
-            fg=self.colors["muted"],
-            wraplength=420,
+            card, text="Aceda ao seu cofre com segurança e continue\nde onde ficou.",
+            font=(_FONT, 10), bg=_FORM_BG, fg=_FORM_MUTED,
             justify="left",
-        ).pack(anchor="w")
+        ).pack(anchor="w", pady=(0, 24))
 
-        # Formulário
-        form = tk.Frame(card, bg="#FFFFFF")
-        form.pack(fill="x", padx=32, pady=(8, 20))
-
+        # ── Email ──
         tk.Label(
-            form,
-            text="Email ou Telemóvel",
-            font=("Segoe UI", 11, "bold"),
-            bg="#FFFFFF",
-            fg=self.colors["text"],
+            card, text="Email ou Telemóvel",
+            font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT,
         ).pack(anchor="w")
-        self.login_entry = tk.Entry(
-            form,
-            width=34,
-            font=("Segoe UI", 12),
-            relief="flat",
-            highlightthickness=1,
-            highlightbackground=self.colors["border"],
-            highlightcolor=self.colors["primary"],
-        )
-        self.login_entry.pack(fill="x", pady=(6, 16), ipady=6)
-        self.login_entry.bind("<Return>", lambda e: self.login())
 
+        self.login_entry = _FocusEntry(card, placeholder="nome@exemplo.pt")
+        self.login_entry.pack(fill="x", pady=(6, 16), ipady=8)
+        self.login_entry.bind("<Return>", lambda _: self.login())
+
+        # ── Password ──
         tk.Label(
-            form,
-            text="Palavra-passe",
-            font=("Segoe UI", 11, "bold"),
-            bg="#FFFFFF",
-            fg=self.colors["text"],
+            card, text="Palavra-passe",
+            font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT,
         ).pack(anchor="w")
-        self.password_entry = tk.Entry(
-            form,
-            width=34,
-            font=("Segoe UI", 12),
-            show="*",
-            relief="flat",
-            highlightthickness=1,
-            highlightbackground=self.colors["border"],
-            highlightcolor=self.colors["primary"],
-        )
-        self.password_entry.pack(fill="x", pady=(6, 20), ipady=6)
-        self.password_entry.bind("<Return>", lambda e: self.login())
 
-        login_btn = tk.Button(
-            form,
-            text="Entrar",
-            command=self.login,
-            bg=self.colors["primary"],
-            fg="white",
-            activebackground=self.colors["primary"],
-            activeforeground="white",
-            relief="flat",
-            cursor="hand2",
-            padx=18,
-            pady=10,
-        )
-        login_btn.pack(fill="x")
+        self._pw_field = _PasswordField(card, placeholder="••••••••••••")
+        self._pw_field.pack(fill="x", pady=(6, 24))
+        self._pw_field.bind_enter(lambda _: self.login())
 
-        register_btn = tk.Button(
-            form,
-            text="Não tem conta? Registar",
-            command=self.show_register_view,
-            bg="#FFFFFF",
-            fg=self.colors["primary"],
-            activebackground="#FFFFFF",
-            activeforeground=self.colors["primary"],
-            relief="flat",
-            cursor="hand2",
-            pady=6,
+        # ── Botão Entrar ──
+        self._login_btn = _ActionButton(
+            card, text="Entrar", command=self.login,
         )
-        register_btn.pack(pady=(12, 0))
+        self._login_btn.pack(fill="x", ipady=0)
+
+        # ── Link Registar ──
+        reg_link = tk.Label(
+            card, text="Não tem conta? Registar",
+            font=(_FONT, 10), bg=_FORM_BG, fg=_BRAND_ACCENT,
+            cursor="hand2",
+        )
+        reg_link.pack(pady=(16, 0))
+        reg_link.bind("<Enter>", lambda e: reg_link.config(font=(_FONT, 10, "underline")))
+        reg_link.bind("<Leave>", lambda e: reg_link.config(font=(_FONT, 10)))
+        reg_link.bind("<Button-1>", lambda e: self.show_register_view())
+
+        # Fade-in
+        _fade_in(card)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # REGISTER VIEW
+    # ══════════════════════════════════════════════════════════════════════════
 
     def show_register_view(self):
-        """Mostra a tela de registo."""
         self.clear_window()
         self.current_view = "register"
+        self._center_window()
 
-        # Centralizar janela
-        largura = WINDOW_WIDTH
-        altura = WINDOW_HEIGHT
-        self.root.update_idletasks()
-        screen_largura = self.root.winfo_screenwidth()
-        screen_altura = self.root.winfo_screenheight()
-        x = (screen_largura // 2) - (largura // 2)
-        y = (screen_altura // 2) - (altura // 2)
-        self.root.geometry(f"{largura}x{altura}+{x}+{y}")
+        outer = tk.Frame(self.root, bg=_FORM_BG)
+        outer.pack(fill="both", expand=True)
 
-        # Container principal
-        main_container = tk.Frame(self.root, bg="#FFFFFF")
-        main_container.pack(fill="both", expand=True)
+        _bar, _bar_left = _build_titlebar(outer, self)
 
-        # Barra de Título
-        barra_topo = tk.Frame(main_container, height=35, bg="white")
-        barra_topo.pack(fill="x", side="top")
+        body = tk.Frame(outer, bg=_FORM_BG)
+        body.pack(fill="both", expand=True)
 
-        barra_esquerda_topo = tk.Frame(barra_topo, bg="#2C2F33", width=210, height=35)
-        barra_esquerda_topo.pack(side="left")
-        barra_esquerda_topo.pack_propagate(False)
+        left_panel = _build_brand_panel(body)
+        left_panel.place(relx=0, rely=0, relwidth=_LEFT_RATIO, relheight=1)
 
-        barra_direita_topo = tk.Frame(barra_topo, bg="white", height=35)
-        barra_direita_topo.pack(side="left", fill="both", expand=True)
+        def _sync_left(_e=None):
+            _bar_left.config(width=int(body.winfo_width() * _LEFT_RATIO))
+        body.bind("<Configure>", _sync_left)
 
-        for frame in (barra_topo, barra_esquerda_topo, barra_direita_topo):
-            frame.bind("<Button-1>", self.start_move)
-            frame.bind("<B1-Motion>", self.mover_janela)
+        right_panel = tk.Frame(body, bg=_FORM_BG)
+        right_panel.place(relx=_LEFT_RATIO, rely=0, relwidth=1 - _LEFT_RATIO, relheight=1)
 
-        btn_fechar = tk.Label(barra_direita_topo, text="✕", bg="white", fg="black", font=("Segoe UI", 11), width=4, cursor="hand2")
-        btn_fechar.pack(side="right", fill="y")
-        btn_fechar.bind("<Enter>", lambda e: btn_fechar.config(bg="#e5e5e5"))
-        btn_fechar.bind("<Leave>", lambda e: btn_fechar.config(bg="white"))
-        btn_fechar.bind("<Button-1>", lambda e: self.root.destroy())
+        # Scrollable area para o formulário mais longo
+        canvas = tk.Canvas(right_panel, bg=_FORM_BG, highlightthickness=0, bd=0)
+        scrollbar = tk.Scrollbar(right_panel, orient="vertical", command=canvas.yview)
+        scroll_frame = tk.Frame(canvas, bg=_FORM_BG)
 
-        btn_min = tk.Label(barra_direita_topo, text="—", bg="white", fg="black", font=("Segoe UI", 11), width=4, cursor="hand2")
-        btn_min.pack(side="right", fill="y")
-        btn_min.bind("<Enter>", lambda e: btn_min.config(bg="#e5e5e5"))
-        btn_min.bind("<Leave>", lambda e: btn_min.config(bg="white"))
-        btn_min.bind("<Button-1>", lambda e: self.minimizar())
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="n")
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Conteúdo
-        content = tk.Frame(main_container, bg="#FFFFFF")
-        content.pack(fill="both", expand=True)
-        content.place(relx=0.5, rely=0.5, anchor="center")
+        # Centrar horizontalmente
+        def _center_scroll(_e=None):
+            cw = canvas.winfo_width()
+            canvas.itemconfigure(1, width=cw)
+        canvas.bind("<Configure>", _center_scroll)
 
-        card = tk.Frame(content, bg="#FFFFFF")
-        card.pack(padx=24, pady=24)
+        canvas.pack(side="left", fill="both", expand=True)
+        # scrollbar visível apenas se necessário
+        canvas.bind("<Enter>", lambda _: canvas.bind_all("<MouseWheel>",
+                    lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")))
+        canvas.bind("<Leave>", lambda _: canvas.unbind_all("<MouseWheel>"))
 
-        header = tk.Frame(card, bg="#FFFFFF")
-        header.pack(fill="x", padx=32, pady=(28, 12))
+        # Card
+        card = tk.Frame(scroll_frame, bg=_FORM_BG)
+        card.pack(padx=48, pady=(40, 32))
 
+        # ── Header ──
+        tk.Label(card, text="Password Manager", font=(_FONT, 12), bg=_FORM_BG, fg=_BRAND_ACCENT).pack(anchor="w")
+        tk.Label(card, text="Criar conta", font=(_FONT, 28, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w", pady=(6, 4))
         tk.Label(
-            header,
-            text="Criar conta",
-            font=("Segoe UI", 28, "bold"),
-            bg="#FFFFFF",
-            fg=self.colors["text"],
-        ).pack(anchor="w", pady=(0, 4))
+            card, text="Registe-se para começar a gerir os seus\nacessos com segurança.",
+            font=(_FONT, 10), bg=_FORM_BG, fg=_FORM_MUTED, justify="left",
+        ).pack(anchor="w", pady=(0, 24))
 
-        tk.Label(
-            header,
-            text="Registe-se para começar a gerir os seus acessos com segurança.",
-            font=("Segoe UI", 11),
-            bg="#FFFFFF",
-            fg=self.colors["muted"],
-            wraplength=460,
-            justify="left",
-        ).pack(anchor="w")
+        # ── Username ──
+        tk.Label(card, text="Username", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        self.reg_username_entry = _FocusEntry(card, placeholder="johndoe")
+        self.reg_username_entry.pack(fill="x", pady=(6, 12), ipady=8)
 
-        form = tk.Frame(card, bg="#FFFFFF")
-        form.pack(fill="x", padx=32, pady=(8, 20))
+        # ── Email ──
+        tk.Label(card, text="Email", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        self.reg_email_entry = _FocusEntry(card, placeholder="nome@exemplo.pt")
+        self.reg_email_entry.pack(fill="x", pady=(6, 12), ipady=8)
 
-        tk.Label(form, text="Username", font=("Segoe UI", 11, "bold"), bg="#FFFFFF", fg=self.colors["text"]).pack(anchor="w")
-        self.reg_username_entry = tk.Entry(form, width=34, font=("Segoe UI", 12), relief="flat", highlightthickness=1,
-                                          highlightbackground=self.colors["border"], highlightcolor=self.colors["primary"])
-        self.reg_username_entry.pack(fill="x", pady=(6, 12), ipady=6)
+        # ── Password ──
+        tk.Label(card, text="Palavra-passe", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        self._reg_pw_field = _PasswordField(card, placeholder="Mínimo 12 caracteres")
+        self._reg_pw_field.pack(fill="x", pady=(6, 4))
 
-        tk.Label(form, text="Email", font=("Segoe UI", 11, "bold"), bg="#FFFFFF", fg=self.colors["text"]).pack(anchor="w")
-        self.reg_email_entry = tk.Entry(form, width=34, font=("Segoe UI", 12), relief="flat", highlightthickness=1,
-                                       highlightbackground=self.colors["border"], highlightcolor=self.colors["primary"])
-        self.reg_email_entry.pack(fill="x", pady=(6, 12), ipady=6)
-
-        tk.Label(form, text="Palavra-passe", font=("Segoe UI", 11, "bold"), bg="#FFFFFF", fg=self.colors["text"]).pack(anchor="w")
-        self.reg_password_entry = tk.Entry(form, width=34, font=("Segoe UI", 12), show="*", relief="flat", highlightthickness=1,
-                                          highlightbackground=self.colors["border"], highlightcolor=self.colors["primary"])
-        self.reg_password_entry.pack(fill="x", pady=(6, 4), ipady=6)
-
-        self._strength_bar = PasswordStrengthBar(form, bg="#FFFFFF")
+        self._strength_bar = PasswordStrengthBar(card, bg=_FORM_BG)
         self._strength_bar.pack(fill="x", pady=(0, 12))
-        self._strength_bar.attach(self.reg_password_entry)
+        self._strength_bar.attach(self._reg_pw_field.entry)
 
-        tk.Label(form, text="Confirmar Palavra-passe", font=("Segoe UI", 11, "bold"), bg="#FFFFFF", fg=self.colors["text"]).pack(anchor="w")
-        self.reg_confirm_entry = tk.Entry(form, width=34, font=("Segoe UI", 12), show="*", relief="flat", highlightthickness=1,
-                                         highlightbackground=self.colors["border"], highlightcolor=self.colors["primary"])
-        self.reg_confirm_entry.pack(fill="x", pady=(6, 12), ipady=6)
+        # ── Confirmar Password ──
+        tk.Label(card, text="Confirmar Palavra-passe", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        self._reg_confirm_field = _PasswordField(card, placeholder="Repetir palavra-passe")
+        self._reg_confirm_field.pack(fill="x", pady=(6, 12))
 
-        tk.Label(form, text="Telemóvel (ex: +351912345678)", font=("Segoe UI", 11, "bold"), bg="#FFFFFF", fg=self.colors["text"]).pack(anchor="w")
-        self.reg_phone_entry = tk.Entry(form, width=34, font=("Segoe UI", 12), relief="flat", highlightthickness=1,
-                                       highlightbackground=self.colors["border"], highlightcolor=self.colors["primary"])
-        self.reg_phone_entry.pack(fill="x", pady=(6, 20), ipady=6)
+        # ── Telemóvel ──
+        tk.Label(card, text="Telemóvel", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        self.reg_phone_entry = _FocusEntry(card, placeholder="+351 912 345 678")
+        self.reg_phone_entry.pack(fill="x", pady=(6, 24), ipady=8)
 
-        register_btn = tk.Button(form, text="Registar", command=self.register, bg=self.colors["success"], fg="white",
-                                activebackground=self.colors["success"], activeforeground="white", relief="flat", cursor="hand2", padx=18, pady=10)
-        register_btn.pack(fill="x")
+        # ── Botão Registar ──
+        self._reg_btn = _ActionButton(
+            card, text="Registar", command=self.register,
+            bg_color=_FORM_SUCCESS, hover_color="#16a34a",
+        )
+        self._reg_btn.pack(fill="x")
 
-        back_btn = tk.Button(form, text="Voltar", command=self.show_login_view, bg="#FFFFFF", fg=self.colors["primary"],
-                            activebackground="#FFFFFF", activeforeground=self.colors["primary"], relief="flat", cursor="hand2", pady=6)
-        back_btn.pack(pady=(12, 0))
+        # ── Link Voltar ──
+        back_link = tk.Label(card, text="← Voltar ao login", font=(_FONT, 10), bg=_FORM_BG, fg=_BRAND_ACCENT, cursor="hand2")
+        back_link.pack(pady=(16, 0))
+        back_link.bind("<Enter>", lambda e: back_link.config(font=(_FONT, 10, "underline")))
+        back_link.bind("<Leave>", lambda e: back_link.config(font=(_FONT, 10)))
+        back_link.bind("<Button-1>", lambda e: self.show_login_view())
 
-    def login(self):
-        """Processa o login."""
-        login_input = self.login_entry.get()
-        password = self.password_entry.get()
+        _fade_in(card)
 
-        if not login_input or not password:
-            messagebox.showerror("Erro", "Por favor preencha todos os campos!")
-            logging.warning("[AVISO] Tentativa de login com campos vazios")
-            return
-
-        is_email = "@" in login_input
-        rate_key = login_input.lower().strip()
-
-        if not self._check_rate_limit(rate_key):
-            messagebox.showerror("Bloqueado", "Demasiadas tentativas. Tente novamente mais tarde.")
-            return
-
-        try:
-            if is_email:
-                email_valid, email_msg = SecurityValidator.validate_email(login_input)
-                if not email_valid:
-                    messagebox.showerror("Erro", email_msg)
-                    return
-
-                logging.info("[INFO] Tentativa de login com email: %s", SecurityValidator.mask_email(login_input))
-                try:
-                    tokens = self.local_auth.login(login_input, password)
-                    self.session_started_at = datetime.now()
-                    logging.info("[OK] Login bem-sucedido para: %s", SecurityValidator.mask_email(login_input))
-                    access_token = tokens.get("access_token")
-                    self.current_email = login_input
-                    if self.on_login_success and access_token:
-                        self.on_login_success(access_token)
-                    else:
-                        messagebox.showinfo("Sucesso", "Login bem-sucedido!")
-                except AuthError as auth_exc:
-                    self._register_failed_attempt(rate_key)
-                    logging.warning("[AVISO] Login falhou para: %s", SecurityValidator.mask_email(login_input))
-                    messagebox.showerror("Erro", str(auth_exc))
-            else:
-                logging.info("[INFO] Tentativa de login com telemóvel: %s", SecurityValidator.mask_phone(login_input))
-                success, result = self.local_auth.login_by_phone(login_input, password)
-
-                if success:
-                    email = result
-                    self.session_started_at = datetime.now()
-                    logging.info("[OK] Login bem-sucedido por telemóvel: %s", SecurityValidator.mask_phone(login_input))
-                    self.current_email = email
-                    if self.on_login_success and self.local_auth.auth_token:
-                        self.on_login_success(self.local_auth.auth_token)
-                    else:
-                        messagebox.showinfo("Sucesso", "Login bem-sucedido!")
-                else:
-                    self._register_failed_attempt(rate_key)
-                    logging.warning("[AVISO] Login por telemóvel falhou: %s", SecurityValidator.mask_phone(login_input))
-                    messagebox.showerror("Erro", result)
-
-        except Exception as e:
-            logging.error("[ERRO] Exceção ao fazer login: %s", e)
-            messagebox.showerror("Erro", f"Erro inesperado: {str(e)}")
-
-    def register(self):
-        """Processa o registo."""
-        try:
-            email = self.reg_email_entry.get()
-            username = self.reg_username_entry.get().strip()
-            password = self.reg_password_entry.get()
-            confirm = self.reg_confirm_entry.get()
-            phone_number = self.reg_phone_entry.get()
-
-            if not all([username, email, password, confirm, phone_number]):
-                messagebox.showerror("Erro", "Por favor preencha todos os campos, incluindo username!")
-                logging.warning("[AVISO] Registo com campos vazios")
-                return
-
-            if not SMSVerification.is_valid_phone(phone_number):
-                messagebox.showerror("Erro", "Número de telemóvel inválido!\nUse: +351912345678 ou 912345678")
-                logging.warning("[AVISO] Formato de telemóvel inválido: %s", SecurityValidator.mask_phone(phone_number))
-                return
-
-            logging.info("[INFO] Tentativa de registo para: %s", SecurityValidator.mask_email(email))
-            all_valid, validation_errors = SecurityValidator.validate_registration(email, password, confirm, username)
-
-            if not all_valid:
-                error_msg = "\n".join(validation_errors)
-                messagebox.showerror("Erro de Validação", error_msg)
-                logging.warning("[AVISO] Registo inválido para %s: %s erro(s)", SecurityValidator.mask_email(email), len(validation_errors))
-                return
-
-            success, message, response_data = self.local_auth.register(email, password, phone_number, username)
-
-            if success:
-                logging.info("[OK] Utilizador registado: %s", SecurityValidator.mask_email(email))
-                user_name = username
-                
-                # Enviar email com link de verificação se houver token
-                if response_data and isinstance(response_data, dict) and 'verificationToken' in response_data:
-                    token = response_data['verificationToken']
-                    email_success, email_msg = EmailVerification.send_verification_email(email, token, user_name)
-                    if email_success:
-                        logging.info("[OK] Email de verificação enviado para: %s", SecurityValidator.mask_email(email))
-                    else:
-                        logging.warning("[AVISO] Falha ao enviar email: %s", email_msg)
-                
-                sms_code, sms_message = SMSVerification.generate_sms_code(phone_number)
-
-                if sms_code is None:
-                    messagebox.showerror("Erro SMS", sms_message)
-                    logging.error("[ERRO] Falha ao gerar código SMS para: %s", SecurityValidator.mask_phone(phone_number))
-                    return
-
-                self.show_phone_verification_view(email, phone_number, user_name)
-            else:
-                logging.warning("[AVISO] Registo falhou para: %s - %s", SecurityValidator.mask_email(email), message)
-                messagebox.showerror("Erro", message)
-
-        except Exception as e:
-            logging.error("[ERRO] Exceção ao registar: %s", e)
-            messagebox.showerror("Erro", f"Erro inesperado: {str(e)}")
+    # ══════════════════════════════════════════════════════════════════════════
+    # PHONE VERIFICATION VIEW
+    # ══════════════════════════════════════════════════════════════════════════
 
     def show_phone_verification_view(self, email: str, phone_number: str, user_name: str):
-        """Mostra tela de verificação por SMS."""
         self.clear_window()
+        self._center_window()
 
-        # Centralizar
-        largura = WINDOW_WIDTH
-        altura = WINDOW_HEIGHT
-        self.root.update_idletasks()
-        screen_largura = self.root.winfo_screenwidth()
-        screen_altura = self.root.winfo_screenheight()
-        x = (screen_largura // 2) - (largura // 2)
-        y = (screen_altura // 2) - (altura // 2)
-        self.root.geometry(f"{largura}x{altura}+{x}+{y}")
+        outer = tk.Frame(self.root, bg=_FORM_BG)
+        outer.pack(fill="both", expand=True)
 
-        main_container = tk.Frame(self.root, bg="#FFFFFF")
-        main_container.pack(fill="both", expand=True)
+        _bar, _bar_left = _build_titlebar(outer, self)
 
-        # Barra de Título
-        barra_topo = tk.Frame(main_container, height=35, bg="white")
-        barra_topo.pack(fill="x", side="top")
+        body = tk.Frame(outer, bg=_FORM_BG)
+        body.pack(fill="both", expand=True)
 
-        barra_esquerda_topo = tk.Frame(barra_topo, bg="#2C2F33", width=210, height=35)
-        barra_esquerda_topo.pack(side="left")
-        barra_esquerda_topo.pack_propagate(False)
+        left_panel = _build_brand_panel(body)
+        left_panel.place(relx=0, rely=0, relwidth=_LEFT_RATIO, relheight=1)
 
-        barra_direita_topo = tk.Frame(barra_topo, bg="white", height=35)
-        barra_direita_topo.pack(side="left", fill="both", expand=True)
+        def _sync_left(_e=None):
+            _bar_left.config(width=int(body.winfo_width() * _LEFT_RATIO))
+        body.bind("<Configure>", _sync_left)
 
-        for frame in (barra_topo, barra_esquerda_topo, barra_direita_topo):
-            frame.bind("<Button-1>", self.start_move)
-            frame.bind("<B1-Motion>", self.mover_janela)
+        right_panel = tk.Frame(body, bg=_FORM_BG)
+        right_panel.place(relx=_LEFT_RATIO, rely=0, relwidth=1 - _LEFT_RATIO, relheight=1)
 
-        btn_fechar = tk.Label(barra_direita_topo, text="✕", bg="white", fg="black", font=("Segoe UI", 11), width=4, cursor="hand2")
-        btn_fechar.pack(side="right", fill="y")
-        btn_fechar.bind("<Enter>", lambda e: btn_fechar.config(bg="#e5e5e5"))
-        btn_fechar.bind("<Leave>", lambda e: btn_fechar.config(bg="white"))
-        btn_fechar.bind("<Button-1>", lambda e: self.root.destroy())
+        card = tk.Frame(right_panel, bg=_FORM_BG)
+        card.place(relx=0.5, rely=0.5, anchor="center")
 
-        btn_min = tk.Label(barra_direita_topo, text="—", bg="white", fg="black", font=("Segoe UI", 11), width=4, cursor="hand2")
-        btn_min.pack(side="right", fill="y")
-        btn_min.bind("<Enter>", lambda e: btn_min.config(bg="#e5e5e5"))
-        btn_min.bind("<Leave>", lambda e: btn_min.config(bg="white"))
-        btn_min.bind("<Button-1>", lambda e: self.minimizar())
+        # ── Header ──
+        tk.Label(card, text="📱", font=(_FONT, 36), bg=_FORM_BG).pack(pady=(0, 8))
+        tk.Label(card, text="Confirmar Telemóvel", font=(_FONT, 24, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(pady=(0, 6))
+        tk.Label(
+            card,
+            text=f"Enviámos um código SMS para\n{SMSVerification.format_phone_display(phone_number)}",
+            font=(_FONT, 10), bg=_FORM_BG, fg=_FORM_MUTED, justify="center",
+        ).pack(pady=(0, 24))
 
-        content = tk.Frame(main_container, bg="#FFFFFF")
-        content.pack(fill="both", expand=True)
-        content.place(relx=0.5, rely=0.5, anchor="center")
-
-        card = tk.Frame(content, bg="#FFFFFF")
-        card.pack(padx=24, pady=24)
-
-        header = tk.Frame(card, bg="#FFFFFF")
-        header.pack(fill="x", padx=32, pady=(28, 12))
-
-        tk.Label(header, text="Confirmar Telemóvel", font=("Segoe UI", 24, "bold"), 
-                bg="#FFFFFF", fg=self.colors["text"]).pack(anchor="w", pady=(0, 4))
-
-        info = tk.Label(header, text=f"Enviámos um código SMS para\n{SMSVerification.format_phone_display(phone_number)}", 
-                       font=("Segoe UI", 11), bg="#FFFFFF", fg=self.colors["muted"], justify="left")
-        info.pack(anchor="w")
-
-        form = tk.Frame(card, bg="#FFFFFF")
-        form.pack(fill="x", padx=32, pady=(8, 20))
-
-        tk.Label(form, text="Código SMS (6 dígitos)", font=("Segoe UI", 11, "bold"), 
-                bg="#FFFFFF", fg=self.colors["text"]).pack(anchor="w")
-        sms_code_entry = tk.Entry(form, width=20, font=("Segoe UI", 16), justify="center", relief="flat", 
-                                 highlightthickness=1, highlightbackground=self.colors["border"], highlightcolor=self.colors["primary"])
-        sms_code_entry.pack(fill="x", pady=(6, 16), ipady=6)
+        # ── Código SMS ──
+        tk.Label(card, text="Código SMS (6 dígitos)", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        sms_entry = _FocusEntry(card, placeholder="000000")
+        sms_entry.config(font=(_FONT, 18), justify="center")
+        sms_entry.pack(fill="x", pady=(6, 24), ipady=8)
 
         def verify_sms():
-            sms_code = sms_code_entry.get()
-            if not sms_code or len(sms_code) != 6:
+            code = sms_entry.get_value()
+            if not code or len(code) != 6:
                 messagebox.showerror("Erro", "Insira um código com 6 dígitos!")
                 return
-
-            success, message = SMSVerification.verify_sms_code(phone_number, sms_code)
-
+            success, message = SMSVerification.verify_sms_code(phone_number, code)
             if success:
                 verify_success, verify_message = self.local_auth.verify_phone(email)
                 email_success, email_message = EmailVerification.send_confirmation_email(email, user_name)
@@ -669,14 +779,166 @@ class LoginApp:
             else:
                 messagebox.showerror("Erro", message)
 
-        verify_btn = tk.Button(form, text="Verificar Código", command=verify_sms, bg=self.colors["primary"], 
-                              fg="white", activebackground=self.colors["primary"], activeforeground="white", relief="flat", cursor="hand2", padx=18, pady=10)
-        verify_btn.pack(fill="x")
+        _ActionButton(card, text="Verificar Código", command=verify_sms).pack(fill="x")
 
-        resend_btn = tk.Button(form, text="Reenviar Código", command=resend_sms, bg="#FFFFFF", 
-                              fg=self.colors["text"], activebackground="#FFFFFF", activeforeground=self.colors["text"], relief="flat", cursor="hand2", pady=6)
-        resend_btn.pack(fill="x", pady=(8, 0))
+        resend_link = tk.Label(card, text="Reenviar código", font=(_FONT, 10), bg=_FORM_BG, fg=_BRAND_ACCENT, cursor="hand2")
+        resend_link.pack(pady=(12, 0))
+        resend_link.bind("<Enter>", lambda e: resend_link.config(font=(_FONT, 10, "underline")))
+        resend_link.bind("<Leave>", lambda e: resend_link.config(font=(_FONT, 10)))
+        resend_link.bind("<Button-1>", lambda e: resend_sms())
 
-        back_btn = tk.Button(form, text="Voltar", command=self.show_login_view, bg="#FFFFFF", 
-                            fg=self.colors["primary"], activebackground="#FFFFFF", activeforeground=self.colors["primary"], relief="flat", cursor="hand2", pady=6)
-        back_btn.pack(pady=(8, 0))
+        back_link = tk.Label(card, text="← Voltar ao login", font=(_FONT, 10), bg=_FORM_BG, fg=_FORM_MUTED, cursor="hand2")
+        back_link.pack(pady=(8, 0))
+        back_link.bind("<Button-1>", lambda e: self.show_login_view())
+
+        _fade_in(card)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # LOGIC — Login
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def login(self):
+        login_input = self.login_entry.get_value()
+        password = self._pw_field.get_value()
+
+        if not login_input or not password:
+            messagebox.showerror("Erro", "Por favor preencha todos os campos!")
+            logging.warning("[AVISO] Tentativa de login com campos vazios")
+            return
+
+        is_email = "@" in login_input
+        rate_key = login_input.lower().strip()
+
+        if not self._check_rate_limit(rate_key):
+            messagebox.showerror("Bloqueado", "Demasiadas tentativas. Tente novamente mais tarde.")
+            return
+
+        # Loading state
+        if self._login_btn:
+            self._login_btn.set_loading(True)
+
+        def _do_login():
+            try:
+                if is_email:
+                    email_valid, email_msg = SecurityValidator.validate_email(login_input)
+                    if not email_valid:
+                        messagebox.showerror("Erro", email_msg)
+                        return
+
+                    logging.info("[INFO] Tentativa de login com email: %s", SecurityValidator.mask_email(login_input))
+                    try:
+                        tokens = self.local_auth.login(login_input, password)
+                        self.session_started_at = datetime.now()
+                        logging.info("[OK] Login bem-sucedido para: %s", SecurityValidator.mask_email(login_input))
+                        access_token = tokens.get("access_token")
+                        self.current_email = login_input
+                        if self.on_login_success and access_token:
+                            self.on_login_success(access_token)
+                        else:
+                            messagebox.showinfo("Sucesso", "Login bem-sucedido!")
+                    except AuthError as auth_exc:
+                        self._register_failed_attempt(rate_key)
+                        logging.warning("[AVISO] Login falhou para: %s", SecurityValidator.mask_email(login_input))
+                        messagebox.showerror("Erro", str(auth_exc))
+                else:
+                    logging.info("[INFO] Tentativa de login com telemóvel: %s", SecurityValidator.mask_phone(login_input))
+                    success, result = self.local_auth.login_by_phone(login_input, password)
+
+                    if success:
+                        email = result
+                        self.session_started_at = datetime.now()
+                        logging.info("[OK] Login bem-sucedido por telemóvel: %s", SecurityValidator.mask_phone(login_input))
+                        self.current_email = email
+                        if self.on_login_success and self.local_auth.auth_token:
+                            self.on_login_success(self.local_auth.auth_token)
+                        else:
+                            messagebox.showinfo("Sucesso", "Login bem-sucedido!")
+                    else:
+                        self._register_failed_attempt(rate_key)
+                        logging.warning("[AVISO] Login por telemóvel falhou: %s", SecurityValidator.mask_phone(login_input))
+                        messagebox.showerror("Erro", result)
+            except Exception as e:
+                logging.error("[ERRO] Exceção ao fazer login: %s", e)
+                messagebox.showerror("Erro", f"Erro inesperado: {str(e)}")
+            finally:
+                if self._login_btn:
+                    try:
+                        self._login_btn.set_loading(False)
+                    except tk.TclError:
+                        pass  # Widget já destruído (login success)
+
+        # Dar tempo ao UI de mostrar o loading
+        self.root.after(100, _do_login)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # LOGIC — Register
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def register(self):
+        try:
+            email = self.reg_email_entry.get_value()
+            username = self.reg_username_entry.get_value()
+            password = self._reg_pw_field.get_value()
+            confirm = self._reg_confirm_field.get_value()
+            phone_number = self.reg_phone_entry.get_value()
+
+            if not all([username, email, password, confirm, phone_number]):
+                messagebox.showerror("Erro", "Por favor preencha todos os campos, incluindo username!")
+                logging.warning("[AVISO] Registo com campos vazios")
+                return
+
+            if not SMSVerification.is_valid_phone(phone_number):
+                messagebox.showerror("Erro", "Número de telemóvel inválido!\nUse: +351912345678 ou 912345678")
+                logging.warning("[AVISO] Formato de telemóvel inválido: %s", SecurityValidator.mask_phone(phone_number))
+                return
+
+            # Loading
+            if hasattr(self, "_reg_btn"):
+                self._reg_btn.set_loading(True)
+
+            logging.info("[INFO] Tentativa de registo para: %s", SecurityValidator.mask_email(email))
+            all_valid, validation_errors = SecurityValidator.validate_registration(email, password, confirm, username)
+
+            if not all_valid:
+                error_msg = "\n".join(validation_errors)
+                messagebox.showerror("Erro de Validação", error_msg)
+                logging.warning("[AVISO] Registo inválido para %s: %s erro(s)", SecurityValidator.mask_email(email), len(validation_errors))
+                if hasattr(self, "_reg_btn"):
+                    self._reg_btn.set_loading(False)
+                return
+
+            success, message, response_data = self.local_auth.register(email, password, phone_number, username)
+
+            if success:
+                logging.info("[OK] Utilizador registado: %s", SecurityValidator.mask_email(email))
+                user_name = username
+
+                if response_data and isinstance(response_data, dict) and "verificationToken" in response_data:
+                    token = response_data["verificationToken"]
+                    email_success, email_msg = EmailVerification.send_verification_email(email, token, user_name)
+                    if email_success:
+                        logging.info("[OK] Email de verificação enviado para: %s", SecurityValidator.mask_email(email))
+                    else:
+                        logging.warning("[AVISO] Falha ao enviar email: %s", email_msg)
+
+                sms_code, sms_message = SMSVerification.generate_sms_code(phone_number)
+
+                if sms_code is None:
+                    messagebox.showerror("Erro SMS", sms_message)
+                    logging.error("[ERRO] Falha ao gerar código SMS para: %s", SecurityValidator.mask_phone(phone_number))
+                    return
+
+                self.show_phone_verification_view(email, phone_number, user_name)
+            else:
+                logging.warning("[AVISO] Registo falhou para: %s - %s", SecurityValidator.mask_email(email), message)
+                messagebox.showerror("Erro", message)
+
+        except Exception as e:
+            logging.error("[ERRO] Exceção ao registar: %s", e)
+            messagebox.showerror("Erro", f"Erro inesperado: {str(e)}")
+        finally:
+            if hasattr(self, "_reg_btn"):
+                try:
+                    self._reg_btn.set_loading(False)
+                except tk.TclError:
+                    pass
