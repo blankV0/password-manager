@@ -400,19 +400,25 @@ def _build_brand_panel(parent):
     return panel
 
 
-def _fade_in(widget: tk.Widget, duration_ms: int = 400, steps: int = 12, _step: int = 0):
+def _fade_in(widget: tk.Widget, duration_ms: int = 400, steps: int = 12, _step: int = 0, *, rely: float = 0.5):
     """Fade-in suave de um widget usando lift/place alpha trick.
 
     Tkinter não suporta opacidade por widget, então simulamos com
     uma série rápida de place() com offsets decrescentes que dão
     a ilusão de um slide-up + fade.
+
+    *rely* deve corresponder ao rely base do widget (0.5 para cards
+    centrados, 0.0 para painéis ancorados ao topo).
     """
     if _step > steps:
         return
     # slide-up: começa 15px abaixo e sobe até 0
     offset = int(15 * (1 - _step / steps))
-    widget.place_configure(rely=0.5, y=offset)
-    widget.after(duration_ms // steps, _fade_in, widget, duration_ms, steps, _step + 1)
+    widget.place_configure(rely=rely, y=offset)
+    widget.after(
+        duration_ms // steps,
+        lambda: _fade_in(widget, duration_ms, steps, _step + 1, rely=rely),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -703,7 +709,8 @@ class LoginApp:
         back_link.bind("<Leave>", lambda e: back_link.config(font=(_FONT, 10)))
         back_link.bind("<Button-1>", lambda e: self.show_login_view())
 
-        _fade_in(card)
+        # Animar o painel direito (right_panel usa place, card usa pack dentro do Canvas)
+        _fade_in(right_panel, rely=0)
 
     # ══════════════════════════════════════════════════════════════════════════
     # PHONE VERIFICATION VIEW
