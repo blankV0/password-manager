@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .dockerignore
+# Exclui do contexto do Docker tudo o que não é necessário.
+# Menos contexto = build mais rápido + imagem menor + menos superficie de ataque.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Ambiente virtual Python local (não entra na imagem)
+.venv/
+venv/
+env/
+
+# Bytecode compilado
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Ficheiros de segredo — NUNCA entram na imagem Docker
+.env
+*.env
+
+# Dados e logs locais — são montados como volumes no servidor
+data/
+logs/
+
+# Build artifacts do desktop app (PyInstaller)
+build/
+dist/
+*.spec
+*.zip
+
+# Testes e documentação — não necessários no container
+run_tests.py
+diagnose.py
+docs/
+*.md
+
+# Configurações do editor
+.vscode/
+.idea/
+*.code-workspace
+
+# Git
+.git/
+.gitignore
+
+# Caches de tools
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Windows
+Thumbs.db
+desktop.ini

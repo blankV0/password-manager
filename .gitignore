@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .gitignore — Password Manager
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── SEGREDOS — NUNCA commitar ────────────────────────────────────────────────
+.env
+*.env
+!.env.example          # O template (.env.example) pode ser commitado
+
+# Certificados TLS — contêm chaves privadas
+docker/nginx/certs/*.pem
+docker/nginx/certs/*.key
+docker/nginx/certs/*.crt
+docker/nginx/certs/*.p12
+# Manter o README.txt explicativo
+!docker/nginx/certs/README.txt
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.Python
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# ── Dados e logs locais (persistidos via Docker volumes no servidor) ──────────
+data/*
+!data/preferences.json
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Build artifacts (PyInstaller / desktop app) ───────────────────────────────
+build/
+dist/
+*.spec
+*.zip
+Password_Manager_Build.zip
+
+# ── Ferramentas de desenvolvimento ───────────────────────────────────────────
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.eggs/
+
+# ── IDEs ─────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.code-workspace
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+.DS_Store
+.env.flask.bak
+
+# Client-side certs (development only)
+certs/*.pem
+!certs/*.pem.localhost_only

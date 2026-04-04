@@ -1,0 +1,10 @@
+{
+  "theme": "dark",
+  "auto_lock_minutes": 5,
+  "clipboard_clear_seconds": 30,
+  "pw_default_length": 20,
+  "pw_include_symbols": true,
+  "pw_include_numbers": true,
+  "pw_include_uppercase": true,
+  "show_password_strength": true
+}

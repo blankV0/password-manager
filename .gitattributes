@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .gitattributes — Line ending normalization
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Force LF for scripts (cross-platform compatibility)
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.conf text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+*.toml text eol=lf
+
+# Docker
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# Binary files — no line ending conversion
+*.pem binary
+*.key binary
+*.crt binary
+*.p12 binary
+*.db binary
+*.sqlite binary
+*.png binary
+*.jpg binary
+*.ico binary

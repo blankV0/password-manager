@@ -1,0 +1,15 @@
+# Dependências principais da aplicação
+requests==2.32.3
+urllib3==2.6.3
+python-dotenv==1.2.1
+twilio==9.6.1
+
+# Backend de autenticação seguro
+fastapi==0.115.12
+uvicorn==0.34.0
+argon2-cffi==23.1.0
+PyJWT==2.10.1
+email-validator==2.2.0
+
+# Criptografia do vault (AES-256-GCM)
+cryptography>=44.0.0
