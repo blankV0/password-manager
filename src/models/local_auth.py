@@ -616,7 +616,7 @@ class LocalAuth:
         """
         email = (email or "").strip()
         success, _, data = self._api_get(
-            "/check-verified",
+            "/auth/check-verified",
             {"email": email},
         )
         if success and isinstance(data, dict):
@@ -634,13 +634,27 @@ class LocalAuth:
             (success: bool, message: str)
         """
         email = (email or "").strip()
-        success, message, _ = self._api_post(
-            "/resend-verification",
-            {"email": email},
-        )
-        if not success:
-            return False, message or "Erro ao reenviar email."
-        return True, message or "Email de verificação reenviado."
+        # Server expects email as query parameter, not JSON body
+        try:
+            response = self.session.post(
+                self._api_url("/auth/resend-verification"),
+                params={"email": email},
+                headers=self._headers(),
+                timeout=API_TIMEOUT,
+                verify=self._get_verify(),
+            )
+            data = {}
+            if response.content:
+                try:
+                    data = response.json()
+                except ValueError:
+                    data = {}
+            if response.ok:
+                return True, data.get("message", "Email de verificação reenviado.")
+            message = data.get("message") or data.get("detail") or f"HTTP {response.status_code}"
+            return False, message
+        except RequestException as e:
+            return False, f"Erro de ligação: {str(e)}"
 
     def get_phone_number(self, email: str) -> Tuple[Optional[str], bool, str]:
         """
