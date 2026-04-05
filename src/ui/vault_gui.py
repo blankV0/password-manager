@@ -218,8 +218,15 @@ class VaultPage(tk.Frame):
         master: tk.Misc,
         local_auth: LocalAuth,
         master_password: str,
+        theme_colors: dict | None = None,
     ) -> None:
-        super().__init__(master, bg="white")
+        # Theme colors — fallback to light defaults
+        self.tc = theme_colors or {
+            "bg": "#FFFFFF", "card": "#F9FAFB", "text": "#1f2937",
+            "muted": "#6b7280", "border": "#e5e7eb", "accent": "#6c63ff",
+            "input_bg": "#FFFFFF", "success": "#22c55e", "danger": "#ef4444",
+        }
+        super().__init__(master, bg=self.tc["bg"])
 
         self._local_auth = local_auth
         self._master_password = master_password
@@ -235,20 +242,22 @@ class VaultPage(tk.Frame):
     # ── Build ────────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        tc = self.tc
+
         # Badge
         badge = tk.Label(
             self, text="AES-256-GCM  \u2022  Zero-Knowledge  \u2022  Encriptado ponto-a-ponto",
-            font=("Segoe UI", 9), bg="white", fg="#6c63ff",
+            font=("Segoe UI", 9), bg=tc["bg"], fg=tc["accent"],
         )
         badge.pack(anchor="w", pady=(0, 12))
 
         # Toolbar
-        toolbar = tk.Frame(self, bg="white")
+        toolbar = tk.Frame(self, bg=tc["bg"])
         toolbar.pack(fill="x", pady=(0, 10))
 
         btn_dark = {"bg": "#2C2F33", "fg": "white", "font": ("Segoe UI", 9, "bold"),
                     "relief": "flat", "cursor": "hand2", "padx": 14}
-        btn_light = {"bg": "#E9ECEF", "fg": "#2C2F33", "font": ("Segoe UI", 9, "bold"),
+        btn_light = {"bg": tc["border"], "fg": tc["text"], "font": ("Segoe UI", 9, "bold"),
                      "relief": "flat", "cursor": "hand2", "padx": 14}
 
         tk.Button(toolbar, text="ADICIONAR", command=self._on_add, **btn_dark).pack(side="left", ipady=8)
@@ -258,39 +267,39 @@ class VaultPage(tk.Frame):
         tk.Button(toolbar, text="ATUALIZAR", command=self._on_refresh, **btn_light).pack(side="left", ipady=8)
 
         # Search
-        search_row = tk.Frame(self, bg="white")
+        search_row = tk.Frame(self, bg=tc["bg"])
         search_row.pack(fill="x", pady=(0, 10))
 
         tk.Label(search_row, text="Pesquisar:", font=("Segoe UI", 10),
-                 bg="white", fg="#666").pack(side="left", padx=(0, 8))
+                 bg=tc["bg"], fg=tc["muted"]).pack(side="left", padx=(0, 8))
 
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *_: self._apply_filter())
 
         search_entry = tk.Entry(
             search_row, textvariable=self.search_var,
-            font=("Segoe UI", 10), bg="#F8F9FA", fg="#444",
-            insertbackground="#444", relief="flat",
-            highlightthickness=1, highlightbackground="#E9ECEF",
-            highlightcolor="#6c63ff",
+            font=("Segoe UI", 10), bg=tc["input_bg"], fg=tc["text"],
+            insertbackground=tc["text"], relief="flat",
+            highlightthickness=1, highlightbackground=tc["border"],
+            highlightcolor=tc["accent"],
         )
         search_entry.pack(side="left", fill="x", expand=True, ipady=6)
 
         # Table
-        table_frame = tk.Frame(self, bg="white", highlightthickness=1, highlightbackground="#E9ECEF")
+        table_frame = tk.Frame(self, bg=tc["bg"], highlightthickness=1, highlightbackground=tc["border"])
         table_frame.pack(fill="both", expand=True)
 
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("Vault.Treeview",
-                        background="#FFFFFF", foreground="#444",
-                        fieldbackground="#FFFFFF", rowheight=38,
+                        background=tc["card"], foreground=tc["text"],
+                        fieldbackground=tc["card"], rowheight=38,
                         font=("Segoe UI", 10))
         style.configure("Vault.Treeview.Heading",
-                        font=("Segoe UI", 8, "bold"), background="#F8F9FA",
-                        foreground="#999", relief="flat")
+                        font=("Segoe UI", 8, "bold"), background=tc["border"],
+                        foreground=tc["muted"], relief="flat")
         style.map("Vault.Treeview",
-                  background=[("selected", "#6c63ff")],
+                  background=[("selected", tc["accent"])],
                   foreground=[("selected", "#ffffff")])
 
         columns = ("site", "username", "password", "notes", "actions")
@@ -323,7 +332,7 @@ class VaultPage(tk.Frame):
         # Status bar
         self._status = tk.Label(
             self, text="A inicializar o vault\u2026", font=("Segoe UI", 9),
-            bg="white", fg="#999", anchor="w",
+            bg=tc["bg"], fg=tc["muted"], anchor="w",
         )
         self._status.pack(fill="x", pady=(8, 0))
 

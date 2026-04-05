@@ -375,6 +375,7 @@ class Dashboard(tk.Frame):
                 self.main_container,
                 local_auth=self.local_auth,
                 master_password=self._master_password,
+                theme_colors=self.tc,
             )
         elif nome_tela == "Gerador":
             page = gerador(
@@ -403,7 +404,7 @@ class Dashboard(tk.Frame):
             page.pack(fill="both", expand=True)
             # Aplicar tema recursivamente a páginas do colega (gerador1)
             # que usam cores hardcoded — sem efeito no tema claro
-            if nome_tela not in ("Definições", "Admin", "Vault"):
+            if nome_tela not in ("Definições", "Admin"):
                 apply_theme_recursive(page, self.tc)
 
     def _on_theme_changed(self, new_theme: str) -> None:

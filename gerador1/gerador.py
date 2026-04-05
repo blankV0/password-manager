@@ -159,7 +159,7 @@ class gerador(tk.Frame):
         # ── Mini diálogo: pedir Serviço e Utilizador ──
         dialog = tk.Toplevel(self)
         dialog.title("Guardar no Vault")
-        dialog.geometry("400x280")
+        dialog.geometry("400x360")
         dialog.configure(bg="white")
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
@@ -168,7 +168,7 @@ class gerador(tk.Frame):
         dialog.update_idletasks()
         sx = dialog.winfo_screenwidth()
         sy = dialog.winfo_screenheight()
-        dialog.geometry(f"+{(sx - 400) // 2}+{(sy - 280) // 2}")
+        dialog.geometry(f"+{(sx - 400) // 2}+{(sy - 360) // 2}")
 
         lbl_style = {"font": ("Segoe UI", 8, "bold"), "bg": "white", "fg": "#999"}
         ent_style = {"font": ("Segoe UI", 10), "bg": "#F8F9FA", "relief": "flat"}
