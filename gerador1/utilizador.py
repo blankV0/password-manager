@@ -46,6 +46,10 @@ class utilizador(tk.Frame):
 
         tk.Frame(frame_gestao, bg="#E9ECEF", height=1).pack(fill="x", padx=15)
 
+        self._criar_linha_acao(frame_gestao, "Importar Gerenciador", "Importa passwords de um ficheiro JSON para o gerenciador.", "IMPORTAR", self.btn_cinza, self.importar)
+
+        tk.Frame(frame_gestao, bg="#E9ECEF", height=1).pack(fill="x", padx=15)
+
         self._criar_linha_acao(frame_gestao, "Apagar Todos os Dados do Gerenciador", "Remove permanentemente todas as passwords guardadas no gerenciador.", "APAGAR TUDO", self.btn_vermelho, self.apagar_tudo)
 
     def _analisar_vault(self):
@@ -138,6 +142,83 @@ class utilizador(tk.Frame):
                 messagebox.showinfo("Sucesso", "Gerenciador exportado com sucesso!")
             except Exception as e:
                 messagebox.showerror("Erro", f"Não foi possível exportar: {e}")
+
+    def importar(self):
+        """Importa passwords de um ficheiro JSON para o vault."""
+        if not self._vault:
+            messagebox.showwarning("Aviso", "Gerenciador n\u00e3o inicializado.")
+            return
+
+        ficheiro = filedialog.askopenfilename(
+            filetypes=[("Ficheiro JSON", "*.json")],
+            title="Selecionar ficheiro para importar",
+        )
+        if not ficheiro:
+            return
+
+        try:
+            with open(ficheiro, "r", encoding="utf-8") as f:
+                dados = json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            messagebox.showerror("Erro", "Ficheiro inv\u00e1lido. Deve ser um JSON v\u00e1lido.")
+            return
+        except Exception as e:
+            messagebox.showerror("Erro", f"N\u00e3o foi poss\u00edvel ler o ficheiro: {e}")
+            return
+
+        if not isinstance(dados, list):
+            messagebox.showerror("Erro", "Formato inv\u00e1lido. O ficheiro deve conter uma lista de entradas.")
+            return
+
+        if not dados:
+            messagebox.showinfo("Aviso", "O ficheiro n\u00e3o cont\u00e9m entradas.")
+            return
+
+        # Validar estrutura
+        campos_obrigatorios = {"site", "username", "password"}
+        for i, item in enumerate(dados):
+            if not isinstance(item, dict):
+                messagebox.showerror("Erro", f"Entrada {i+1} inv\u00e1lida (n\u00e3o \u00e9 um objeto).")
+                return
+            faltam = campos_obrigatorios - set(item.keys())
+            if faltam:
+                messagebox.showerror("Erro", f"Entrada {i+1} sem campos: {', '.join(faltam)}")
+                return
+
+        confirm = messagebox.askyesno(
+            "Importar",
+            f"Importar {len(dados)} entrada(s) para o gerenciador?\n\n"
+            "Entradas existentes N\u00c3O ser\u00e3o alteradas.",
+        )
+        if not confirm:
+            return
+
+        sucesso = 0
+        erros = 0
+        for item in dados:
+            site = str(item.get("site", "")).strip()
+            username = str(item.get("username", "")).strip()
+            password = str(item.get("password", "")).strip()
+            notes = str(item.get("notes", "")).strip()
+            if not site or not username or not password:
+                erros += 1
+                continue
+            result = self._vault.add_entry(site, username, password, notes)
+            if result:
+                sucesso += 1
+            else:
+                erros += 1
+
+        msg = f"{sucesso} entrada(s) importada(s) com sucesso."
+        if erros:
+            msg += f"\n{erros} entrada(s) falharam."
+        messagebox.showinfo("Import conclu\u00eddo", msg)
+        logging.info("[UTILIZADOR] Import: %d sucesso, %d erros", sucesso, erros)
+
+        # Refresh
+        for w in self.winfo_children():
+            w.destroy()
+        self.__init__(self.master, local_auth=self.local_auth, master_password=self._master_password)
 
     def apagar_tudo(self):
         """Apaga TODAS as passwords do vault do utilizador atual (via API)."""
