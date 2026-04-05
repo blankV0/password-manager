@@ -234,6 +234,10 @@ class LocalAuth:
                 return True, data.get("message", "OK"), data
             if response.ok and not data:
                 return True, "OK", data
+            # Accept any 2xx with data even without {"ok": true}
+            # (e.g. server returns 201 Created with UserResponse)
+            if response.ok:
+                return True, data.get("message", "OK"), data
 
             if response.status_code == 401 and path not in {"/login", "/refresh"}:
                 if self.refresh_token and self._refresh_session():
