@@ -63,7 +63,8 @@ class AppController:
         self._titlebar_removed = False
         self._drag_start_x = 0
         self._drag_start_y = 0
-        self._drag_hwnd = 0
+        self._win_start_x = 0
+        self._win_start_y = 0
         
         # Forçar composição DWM (layered window) — impede ecrã preto
         # durante drag porque o Windows mantém um buffer off-screen.
@@ -151,12 +152,15 @@ class AppController:
         """Configura o tamanho e posição da janela."""
         largura = 1200
         altura = 800
+        self.root.resizable(False, False)
         self.root.update_idletasks()
         screen_largura = self.root.winfo_screenwidth()
         screen_altura = self.root.winfo_screenheight()
         x = (screen_largura // 2) - (largura // 2)
         y = (screen_altura // 2) - (altura // 2)
         self.root.geometry(f"{largura}x{altura}+{x}+{y}")
+        self.root.minsize(largura, altura)
+        self.root.maxsize(largura, altura)
 
     def _shutdown(self) -> None:
         self.logger.info("[APP] Encerrando aplicação.")
@@ -225,22 +229,26 @@ class AppController:
         barra_direita_topo = tk.Frame(barra_topo, bg=tc["topbar"], height=35)
         barra_direita_topo.pack(side="left", fill="both", expand=True)
         
-        # Drag nativo do Windows — instantâneo, sem qualquer delay.
-        # Com WS_EX_COMPOSITED + -alpha 0.99, o DWM mantém um bitmap
-        # cached da janela.  ReleaseCapture + WM_NCLBUTTONDOWN(HTCAPTION)
-        # diz ao Windows: "arrasta esta janela".  O DWM move o bitmap
-        # directamente no GPU — zero repaint do Tkinter necessário.
+        # Drag manual via Tkinter — só altera posição (+x+y), nunca
+        # o tamanho da janela.  Evita o bug de "growing window" causado
+        # pelo WM_NCLBUTTONDOWN + HTCAPTION quando a titlebar nativa
+        # foi removida via SetWindowLongW.
         def start_move(event):
-            if sys.platform == "win32":
-                hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
-                if not hwnd:
-                    hwnd = self.root.winfo_id()
-                ctypes.windll.user32.ReleaseCapture()
-                # WM_NCLBUTTONDOWN = 0x00A1, HTCAPTION = 2
-                ctypes.windll.user32.SendMessageW(hwnd, 0x00A1, 2, 0)
+            self._drag_start_x = event.x_root
+            self._drag_start_y = event.y_root
+            self._win_start_x = self.root.winfo_x()
+            self._win_start_y = self.root.winfo_y()
+
+        def do_move(event):
+            dx = event.x_root - self._drag_start_x
+            dy = event.y_root - self._drag_start_y
+            new_x = self._win_start_x + dx
+            new_y = self._win_start_y + dy
+            self.root.geometry(f"+{new_x}+{new_y}")
         
         for frame in (barra_topo, barra_esquerda_topo, barra_direita_topo):
             frame.bind("<Button-1>", start_move)
+            frame.bind("<B1-Motion>", do_move)
         
         # Botão fechar
         hover_bg = tc["border"]
