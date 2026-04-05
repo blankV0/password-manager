@@ -377,7 +377,11 @@ class Dashboard(tk.Frame):
                 master_password=self._master_password,
             )
         elif nome_tela == "Gerador":
-            page = gerador(self.main_container)
+            page = gerador(
+                self.main_container,
+                local_auth=self.local_auth,
+                master_password=self._master_password,
+            )
         elif nome_tela == "Verificador":
             page = verificador(self.main_container)
         elif nome_tela == "Utilizador":

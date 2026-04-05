@@ -397,7 +397,7 @@ class VaultPage(tk.Frame):
     ) -> tuple[str, str, str, str] | None:
         dialog = tk.Toplevel(self)
         dialog.title(title)
-        dialog.geometry("420x360")
+        dialog.geometry("420x440")
         dialog.configure(bg="white")
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
@@ -407,7 +407,7 @@ class VaultPage(tk.Frame):
         dialog.update_idletasks()
         sx = dialog.winfo_screenwidth()
         sy = dialog.winfo_screenheight()
-        dialog.geometry(f"+{(sx - 420) // 2}+{(sy - 360) // 2}")
+        dialog.geometry(f"+{(sx - 420) // 2}+{(sy - 440) // 2}")
 
         pad = {"padx": 24}
         lbl_style = {"font": ("Segoe UI", 8, "bold"), "bg": "white", "fg": "#999"}

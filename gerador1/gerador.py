@@ -1,10 +1,14 @@
 import random
 import string
 import tkinter as tk
+from tkinter import messagebox
+
 
 class gerador(tk.Frame):
-    def __init__(self, master):
+    def __init__(self, master, local_auth=None, master_password=None):
         super().__init__(master, bg="white")
+        self._local_auth = local_auth
+        self._master_password = master_password or ""
 
         #Estilos
         label_style = {"font": ("Segoe UI", 8, "bold"), "bg": "white", "fg": "#999"}
@@ -56,6 +60,10 @@ class gerador(tk.Frame):
         #botoes
         tk.Button(frame_unica_container, text="GERAR", command=self.gerar_uma_apenas, bg="#2C2F33", fg="white", font=("Segoe UI", 9, "bold"), padx=15, cursor="hand2", relief="flat").pack(side="left", ipady=6)
         tk.Button(frame_unica_container, text="COPIAR", command=self.copy_unica, bg="#E9ECEF", fg="#2C2F33", font=("Segoe UI", 9, "bold"), padx=15, cursor="hand2", relief="flat").pack(side="left", padx=(5, 0), ipady=6)
+        self._btn_vault = tk.Button(frame_unica_container, text="\U0001f510 VAULT", command=self._guardar_no_vault, bg="#6c63ff", fg="white", font=("Segoe UI", 9, "bold"), padx=15, cursor="hand2", relief="flat")
+        self._btn_vault.pack(side="left", padx=(5, 0), ipady=6)
+        if not self._local_auth:
+            self._btn_vault.pack_forget()
 
         #Varias Passwords
         tk.Label(self, text="VARIAS PASSWORDS", ** label_style).pack(anchor="w", pady=(10, 5))
@@ -135,6 +143,89 @@ class gerador(tk.Frame):
             if res:
                 self.caixa_texto.insert(tk.END, res + "\n")# insere as senhas na caixa de texto
         self.caixa_texto.config(state="disabled") #bloqeuia a pos gerar as senhas
+
+    # ── Guardar no Vault ─────────────────────────────────────────────────
+
+    def _guardar_no_vault(self):
+        """Abre um diálogo para guardar a password gerada diretamente no Vault."""
+        senha = self.var_unica.get()
+        if not senha:
+            messagebox.showinfo("Vault", "Gera uma password primeiro.")
+            return
+        if not self._local_auth:
+            messagebox.showerror("Vault", "Sessão não disponível.")
+            return
+
+        # ── Mini diálogo: pedir Serviço e Utilizador ──
+        dialog = tk.Toplevel(self)
+        dialog.title("Guardar no Vault")
+        dialog.geometry("400x280")
+        dialog.configure(bg="white")
+        dialog.transient(self.winfo_toplevel())
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        dialog.update_idletasks()
+        sx = dialog.winfo_screenwidth()
+        sy = dialog.winfo_screenheight()
+        dialog.geometry(f"+{(sx - 400) // 2}+{(sy - 280) // 2}")
+
+        lbl_style = {"font": ("Segoe UI", 8, "bold"), "bg": "white", "fg": "#999"}
+        ent_style = {"font": ("Segoe UI", 10), "bg": "#F8F9FA", "relief": "flat"}
+
+        tk.Label(dialog, text="Guardar no Vault", font=("Segoe UI", 14, "bold"),
+                 bg="white", fg="#2C2F33").pack(anchor="w", padx=24, pady=(20, 16))
+
+        tk.Label(dialog, text="SERVIÇO", **lbl_style).pack(anchor="w", padx=24)
+        ent_site = tk.Entry(dialog, **ent_style)
+        ent_site.pack(fill="x", padx=24, pady=(4, 10), ipady=8)
+
+        tk.Label(dialog, text="UTILIZADOR / EMAIL", **lbl_style).pack(anchor="w", padx=24)
+        ent_user = tk.Entry(dialog, **ent_style)
+        ent_user.pack(fill="x", padx=24, pady=(4, 10), ipady=8)
+
+        tk.Label(dialog, text="PASSWORD", **lbl_style).pack(anchor="w", padx=24)
+        ent_pw = tk.Entry(dialog, show="\u25cf", **ent_style)
+        ent_pw.pack(fill="x", padx=24, pady=(4, 10), ipady=8)
+        ent_pw.insert(0, senha)
+        ent_pw.config(state="readonly", readonlybackground="#F8F9FA")
+
+        def guardar():
+            site = ent_site.get().strip()
+            user = ent_user.get().strip()
+            if not site or not user:
+                messagebox.showwarning("Aviso", "Serviço e utilizador são obrigatórios.", parent=dialog)
+                return
+            dialog.destroy()
+            self._salvar_vault(site, user, senha)
+
+        btn_frame = tk.Frame(dialog, bg="white")
+        btn_frame.pack(fill="x", padx=24, pady=(4, 20))
+
+        tk.Button(btn_frame, text="GUARDAR", command=guardar,
+                  bg="#6c63ff", fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", padx=20).pack(side="right", ipady=6)
+        tk.Button(btn_frame, text="CANCELAR", command=dialog.destroy,
+                  bg="#E9ECEF", fg="#2C2F33", font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", padx=16).pack(side="right", padx=(0, 8), ipady=6)
+
+    def _salvar_vault(self, site, username, password):
+        """Inicializa o VaultService e guarda a entrada."""
+        try:
+            from src.ui.vault_gui import VaultService
+            svc = VaultService(self._local_auth, self._master_password)
+            ok, msg = svc.initialize()
+            if not ok:
+                messagebox.showerror("Vault", f"Erro ao abrir o vault: {msg}")
+                return
+            entry = svc.add_entry(site, username, password, "")
+            svc.lock()
+            if entry:
+                messagebox.showinfo("Vault", f"Credencial para '{site}' guardada no Vault! \U0001f510")
+            else:
+                messagebox.showerror("Vault", "Falha ao guardar no vault.")
+        except Exception as exc:
+            messagebox.showerror("Vault", f"Erro: {exc}")
 
     #copia toda a lista de passwords
     def copiar_texto(self):
