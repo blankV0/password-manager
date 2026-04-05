@@ -116,6 +116,51 @@ def change_password(
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# EMAIL VERIFICATION ENDPOINTS
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/verify-email")
+def verify_email(
+    token: str,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Verify email via token link clicked from email."""
+    try:
+        result = service.verify_email(token, _build_context(request))
+        return {"ok": True, "result": result}
+    except AuthServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+
+@router.post("/resend-verification")
+def resend_verification(
+    email: str,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Resend verification email."""
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required.")
+    try:
+        service.resend_verification(email, _build_context(request))
+        return {"ok": True, "message": "Email de verificação reenviado."}
+    except AuthServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+
+@router.get("/check-verified")
+def check_verified(
+    email: str,
+    service: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Check if email is verified (used by client polling)."""
+    verified = service.check_email_verified(email)
+    return {"verified": verified}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # ADMIN ENDPOINTS — apenas acessíveis a utilizadores com role=admin
 # ═════════════════════════════════════════════════════════════════════════════
 

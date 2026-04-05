@@ -419,6 +419,95 @@ class AuthService:
                 raise AuthServiceError(401, "Invalid access token.")
             return self._build_user_response(row)
 
+    # ── Email verification ───────────────────────────────────────────────
+
+    def verify_email(self, token: str, context: AuthContext) -> str:
+        """Verify email using token. Returns 'verified', 'already_verified', or raises."""
+        now = int(time.time())
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT ev.id, ev.user_id, ev.expires_at, ev.used_at, u.email "
+                "FROM email_verifications ev JOIN users u ON u.id = ev.user_id "
+                "WHERE ev.token = ?",
+                (token,),
+            ).fetchone()
+            if not row:
+                raise AuthServiceError(400, "Token de verificação inválido.")
+            if row["used_at"]:
+                return "already_verified"
+            if row["expires_at"] < now:
+                raise AuthServiceError(400, "Token expirado. Solicite um novo email de verificação.")
+            conn.execute(
+                "UPDATE email_verifications SET used_at = ? WHERE id = ?",
+                (now, row["id"]),
+            )
+            conn.execute(
+                "UPDATE users SET is_verified = 1, updated_at = ? WHERE id = ?",
+                (now, row["user_id"]),
+            )
+            self._record_event(
+                conn,
+                user_id=row["user_id"],
+                email_hint=SecurityValidator.mask_email(row["email"]),
+                event_type="email_verified",
+                success=True,
+                context=context,
+                detail="email_verified",
+            )
+        return "verified"
+
+    def resend_verification(self, email: str, context: AuthContext) -> str:
+        """Resend verification email. Returns new token."""
+        email = self._normalize_email(email)
+        now = int(time.time())
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT id, username, is_verified FROM users WHERE email = ?",
+                (email,),
+            ).fetchone()
+            if not row:
+                raise AuthServiceError(404, "Email não encontrado.")
+            if row["is_verified"]:
+                raise AuthServiceError(400, "Email já verificado.")
+            # Invalidate old tokens
+            conn.execute(
+                "UPDATE email_verifications SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+                (now, row["id"]),
+            )
+            # Generate new token
+            token = secrets.token_urlsafe(32)
+            conn.execute(
+                "INSERT INTO email_verifications (user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                (row["id"], token, now + 86400, now),
+            )
+            self._record_event(
+                conn,
+                user_id=row["id"],
+                email_hint=SecurityValidator.mask_email(email),
+                event_type="resend_verification",
+                success=True,
+                context=context,
+                detail="verification_resent",
+            )
+        try:
+            from src.auth.email_service import send_verification_email
+            send_verification_email(email, token, row["username"])
+        except Exception as exc:
+            self.logger.warning("[AUTH] Failed to resend verification email: %s", exc)
+        return token
+
+    def check_email_verified(self, email: str) -> bool:
+        """Check if a user's email is verified."""
+        email = self._normalize_email(email)
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT is_verified FROM users WHERE email = ?",
+                (email,),
+            ).fetchone()
+            if not row:
+                return False
+            return bool(row["is_verified"])
+
     def _revoke_all_user_tokens(self, conn: sqlite3.Connection, user_id: str, now: int) -> None:
         conn.execute(
             "UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
