@@ -1,6 +1,6 @@
 # 🔐 Password Manager
 
-> Gestor de passwords seguro com cliente desktop e servidor de autenticação — projeto académico com engenharia de nível profissional.
+> Gestor de passwords seguro com cliente desktop e servidor de autenticação self-hosted — projeto académico com engenharia de nível profissional.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com/)
@@ -13,33 +13,109 @@
 ## 📋 Índice
 
 - [Visão Geral](#-visão-geral)
-- [Arquitetura](#-arquitetura)
 - [Funcionalidades](#-funcionalidades)
-- [Screenshots](#-screenshots)
-- [Início Rápido](#-início-rápido)
-- [Configuração](#-configuração)
-- [Deploy em Produção](#-deploy-em-produção)
+- [Tecnologias Utilizadas](#-tecnologias-utilizadas)
+- [Arquitetura](#-arquitetura)
+- [Instalação e Execução](#-instalação-e-execução)
+- [Build para Executável (.exe)](#-build-para-executável-exe)
+- [Deploy em Produção (Docker)](#-deploy-em-produção-docker)
 - [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Variáveis de Ambiente](#-variáveis-de-ambiente)
+- [Boas Práticas de Segurança](#-boas-práticas-de-segurança)
 - [Endpoints da API](#-endpoints-da-api)
-- [Decisões de Segurança](#-decisões-de-segurança)
-- [Stack Tecnológico](#-stack-tecnológico)
+- [Variáveis de Ambiente](#-variáveis-de-ambiente)
 - [Licença](#-licença)
 
 ---
 
 ## 🎯 Visão Geral
 
-Password Manager é uma aplicação desktop (Tkinter) com servidor de autenticação (FastAPI) que permite:
+O **Password Manager** é uma aplicação desktop desenvolvida em Python que permite aos utilizadores gerir as suas passwords de forma segura. A aplicação comunica com um servidor de autenticação self-hosted via HTTPS, garantindo que todas as credenciais são encriptadas ponto-a-ponto.
 
-- **Registar e autenticar** utilizadores com passwords seguras (Argon2id)
-- **Gerar passwords** aleatórias com políticas configuráveis
-- **Guardar credenciais** num gerenciador encriptado (AES-256-GCM, zero-knowledge)
-- **Verificar a força** de passwords em tempo real
-- **Gerir utilizadores** via painel de administração
-- **Verificar emails** através de fluxo SMTP com token temporário
+### Principais objetivos:
 
-A comunicação entre o cliente e o servidor é feita via HTTPS sobre VPN Tailscale, com TLS terminado no Nginx.
+- **Segurança real** — encriptação AES-256-GCM com arquitetura zero-knowledge (o servidor nunca vê passwords em claro)
+- **Facilidade de uso** — interface gráfica intuitiva com tema escuro/claro, sidebar de navegação e ações rápidas
+- **Infraestrutura profissional** — servidor Docker com Nginx, TLS, rate limiting e hardening completo
+- **Distribuição** — disponível como executável `.exe` para Windows (não requer Python instalado)
+
+---
+
+## ✨ Funcionalidades
+
+### 🔒 Autenticação e Segurança
+
+- Registo e login com passwords seguras (hash Argon2id, recomendado OWASP)
+- Tokens JWT (15 min) + refresh tokens opacos (7 dias) com rotação automática
+- Deteção de reutilização de refresh tokens (proteção contra roubo)
+- Bloqueio de conta após 5 tentativas falhadas (lockout 15 min)
+- Verificação de email via SMTP com token temporário (24h)
+- Rate limiting duplo: aplicação (FastAPI) + rede (Nginx)
+
+### 🔐 Gerenciador de Passwords (Vault)
+
+- Encriptação **AES-256-GCM** — cada entrada é encriptada no cliente antes de ser enviada
+- Arquitetura **KEK/DEK** — Master Password → Argon2id → KEK → unwrap DEK
+- **Zero-knowledge** — o servidor guarda apenas ciphertext, nunca vê passwords em claro
+- CRUD completo: criar, visualizar detalhes, editar e apagar credenciais
+- Deteção de passwords fracas (vermelho) e repetidas (amarelo)
+- Copiar password para clipboard com limpeza automática (30s)
+- Importação e exportação de credenciais em formato JSON
+
+### 🖥️ Interface Desktop
+
+- **Dashboard** com estatísticas do vault e ações rápidas
+- **Gerador** de passwords configurável (comprimento, letras, números, símbolos)
+- **Verificador** de força de passwords em tempo real com checklist visual
+- **Utilizador** — perfil com estatísticas, exportação/importação e eliminação de dados
+- **Definições** — tema escuro/claro, timeouts e zona de perigo
+- **Painel Admin** — gestão de utilizadores (ativar/desativar, reset password, eliminar)
+- Sidebar com realce visual da página ativa
+- Barra de título customizada sem titlebar nativa (Windows)
+
+### 🐳 Infraestrutura
+
+- **Docker Compose** — containers non-root, filesystem read-only, no-new-privileges
+- **Nginx** — TLS 1.2/1.3, HSTS, CSP, X-Frame-Options, `/docs` bloqueado em produção
+- **Rede isolada** — container auth sem portas expostas, só nginx comunica
+- Deploy atómico com backup pré-deploy e rollback instantâneo
+- Health checks automáticos e scripts de monitorização
+- Backups SQLite automatizados + scripts de restore
+
+---
+
+## 🛠 Tecnologias Utilizadas
+
+### Cliente Desktop
+
+| Tecnologia | Versão | Propósito |
+|------------|--------|-----------|
+| Python | 3.11+ | Linguagem principal |
+| Tkinter | stdlib | Interface gráfica |
+| requests | 2.32 | Cliente HTTP |
+| cryptography | 44.0+ | AES-256-GCM (encriptação do vault) |
+| argon2-cffi | 23.1 | Key derivation (Argon2id) |
+| python-dotenv | 1.2 | Variáveis de ambiente |
+| PyInstaller | 6.17 | Build para executável .exe |
+
+### Servidor
+
+| Tecnologia | Versão | Propósito |
+|------------|--------|-----------|
+| FastAPI | 0.115 | Framework API REST |
+| Uvicorn | 0.34 | Servidor ASGI |
+| SQLite | WAL mode | Base de dados |
+| Argon2id | 23.1 | Hash de passwords |
+| PyJWT | 2.10 | Tokens JWT |
+| Pydantic v2 | (via FastAPI) | Validação de schemas |
+
+### Infraestrutura
+
+| Tecnologia | Propósito |
+|------------|-----------|
+| Docker Compose | Containerização e orquestração |
+| Nginx Alpine | Reverse proxy + TLS termination |
+| Tailscale | VPN mesh para comunicação segura |
+| UFW + fail2ban | Firewall e proteção brute-force |
 
 ---
 
@@ -47,224 +123,131 @@ A comunicação entre o cliente e o servidor é feita via HTTPS sobre VPN Tailsc
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                      CLIENTE DESKTOP (Tkinter)               │
+│                    CLIENTE DESKTOP (Tkinter)                 │
 │                                                              │
-│  ┌────────────┐  ┌────────────┐  ┌─────────────────────┐    │
-│  │  Login /   │  │ Dashboard  │  │     Sidebar         │    │
-│  │  Registo   │  │  (inicio)  │  │  ┌───────────────┐  │    │
-│  │  ────────  │  │  ────────  │  │  │ 🏠 Início     │  │    │
-│  │  Email     │  │  Stats     │  │  │ 🔐 Gerenciador│  │    │
-│  │  Password  │  │  Quick     │  │  │ 🔑 Gerador    │  │    │
-│  │  Username  │  │  Actions   │  │  │ 🛡 Verificador│  │    │
-│  └─────┬──────┘  └────────────┘  │  │ 👤 Utilizador │  │    │
-│        │                         │  │ ⚙️ Definições  │  │    │
-│        │  ┌──────────────────┐   │  │ 🔧 Admin      │  │    │
-│        │  │   Gerenciador    │   │  └───────────────┘  │    │
-│        │  │   (Vault GUI)    │   └─────────────────────┘    │
-│        │  │  ┌────────────┐  │                              │
-│        │  │  │ AES-256-GCM│  │  Encriptação client-side:    │
-│        │  │  │ KEK / DEK  │  │  Servidor NUNCA vê plaintext │
-│        │  │  │ Argon2id   │  │                              │
-│        │  │  └────────────┘  │                              │
-│        │  └──────────────────┘                              │
-│        │                                                    │
-│  ┌─────▼──────────────────────────────┐                     │
-│  │  local_auth.py (HTTP auth client)  │                     │
-│  │  ├ login / register / refresh      │                     │
-│  │  ├ check_email_verified            │                     │
-│  │  ├ vault CRUD (ciphertext only)    │                     │
-│  │  └ admin operations                │                     │
-│  └──────────────┬─────────────────────┘                     │
-└─────────────────┼───────────────────────────────────────────┘
-                  │
-                  │ HTTPS (TLS 1.2/1.3 via Tailscale VPN)
-                  ▼
+│  Login/Registo → Dashboard → Sidebar (7 páginas)             │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │  Gerenciador (Vault) — Encriptação client-side       │    │
+│  │  AES-256-GCM · KEK/DEK · Argon2id                   │    │
+│  │  Servidor NUNCA vê passwords em claro                │    │
+│  └──────────────────────────────────────────────────────┘    │
+│                                                              │
+│  local_auth.py → HTTP client (login, vault CRUD, admin)      │
+└─────────────────────┬────────────────────────────────────────┘
+                      │ HTTPS (TLS 1.2/1.3 via Tailscale VPN)
+                      ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                  SERVIDOR DE PRODUÇÃO (Docker)               │
+│               SERVIDOR DE PRODUÇÃO (Docker)                  │
 │                                                              │
-│  ┌────────────────────────┐    ┌───────────────────────────┐ │
-│  │      Nginx (Alpine)    │    │   FastAPI + Uvicorn       │ │
-│  │  ┌──────────────────┐  │    │                           │ │
-│  │  │ TLS termination  │  │    │   AUTH ENDPOINTS          │ │
-│  │  │ Rate limiting    │──┼───▶│   POST /auth/register     │ │
-│  │  │ Security headers │  │    │   POST /auth/login        │ │
-│  │  │ HSTS / CSP       │  │    │   POST /auth/refresh      │ │
-│  │  │ /docs bloqueado  │  │    │   POST /auth/logout       │ │
-│  │  └──────────────────┘  │    │   GET  /auth/me           │ │
-│  └────────────────────────┘    │   POST /auth/change-pw    │ │
-│                                │                           │ │
-│                                │   VERIFICATION            │ │
-│                                │   GET  /auth/verify-email │ │
-│                                │   POST /auth/resend-verif │ │
-│                                │   GET  /auth/check-verif  │ │
-│                                │                           │ │
-│                                │   VAULT (zero-knowledge)  │ │
-│                                │   POST /vault/key         │ │
-│                                │   GET  /vault/key         │ │
-│                                │   PUT  /vault/key         │ │
-│                                │   GET  /vault/entries     │ │
-│                                │   POST /vault/entries     │ │
-│                                │   PUT  /vault/entries/:id │ │
-│                                │   DEL  /vault/entries/:id │ │
-│                                │                           │ │
-│                                │   ADMIN (role=admin)      │ │
-│                                │   POST /admin/users       │ │
-│                                │   POST /admin/user/active │ │
-│                                │   POST /admin/user/reset  │ │
-│                                │   POST /admin/user/delete │ │
-│                                │   POST /admin/logs        │ │
-│                                │   DEL  /account/delete    │ │
-│                                └──────────┬────────────────┘ │
-│                                           │                  │
-│                                ┌──────────▼────────────────┐ │
-│                                │   SQLite (WAL mode)       │ │
-│                                │   ├ users                 │ │
-│                                │   ├ refresh_tokens        │ │
-│                                │   ├ auth_events           │ │
-│                                │   ├ email_verifications   │ │
-│                                │   ├ vault_keys            │ │
-│                                │   └ vault_entries         │ │
-│                                └───────────────────────────┘ │
+│  Nginx (Alpine)           FastAPI + Uvicorn                  │
+│  ┌──────────────┐         ┌──────────────────────┐           │
+│  │ TLS          │         │ /auth/* (JWT, Argon2) │           │
+│  │ Rate limit   │────────▶│ /vault/* (ciphertext) │           │
+│  │ HSTS, CSP    │         │ /admin/* (role=admin) │           │
+│  └──────────────┘         └──────────┬───────────┘           │
+│                                      │                       │
+│                           ┌──────────▼───────────┐           │
+│                           │ SQLite (WAL mode)    │           │
+│                           │ users, vault_entries │           │
+│                           │ vault_keys, tokens   │           │
+│                           └──────────────────────┘           │
 │                                                              │
 │  Segurança: non-root, read-only fs, no-new-privileges       │
-│  Rede: container auth isolado, só nginx acede (pm_internal)  │
+│  Rede: container auth isolado (pm_internal)                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## ✨ Funcionalidades
-
-### 🔒 Segurança & Autenticação
-
-| Feature | Detalhe |
-|---------|---------|
-| Password hashing | **Argon2id** (OWASP recommended, time_cost=3, 64 MiB) |
-| Access tokens | **JWT HS256**, TTL 15 min, claims mínimos |
-| Refresh tokens | Opacos, apenas SHA-256 hash guardado na DB |
-| Token rotation | Rotação automática com deteção de reutilização |
-| Account lockout | 5 tentativas falhadas → bloqueio 15 min |
-| Rate limiting | Sliding-window (app-level) + Nginx (network-level) |
-| SQL Injection | **Imune** — 100% parameterized queries (`?` placeholders) |
-| Input validation | **Pydantic** schemas com `EmailStr`, `Field(min_length, max_length)` |
-| Security gate | Recusa iniciar em produção com JWT secret fraco |
-| API docs | Bloqueados em produção (`/docs`, `/redoc`, `/openapi.json`) |
-| Audit trail | Todos os eventos auth registados na DB + ficheiros de log |
-| Verificação email | Fluxo SMTP com token temporário (24h TTL) |
-
-### 🔐 Gerenciador de Passwords (Vault)
-
-| Feature | Detalhe |
-|---------|---------|
-| Encriptação | **AES-256-GCM** — nível militar, authenticated encryption |
-| Arquitetura | **KEK/DEK** — Master password → Argon2id → KEK → unwrap DEK |
-| Zero-knowledge | Servidor guarda **apenas ciphertext** — nunca vê passwords em claro |
-| CRUD completo | Criar, ler, editar e apagar credenciais encriptadas |
-| Exportação | Exportar vault como ficheiro JSON encriptado |
-| Guardar do gerador | Botão direto no gerador para guardar password no gerenciador |
-
-### 🖥 Cliente Desktop
-
-| Feature | Detalhe |
-|---------|---------|
-| Interface | **Tkinter** com dark/light theme e sidebar de navegação |
-| Página Início | Dashboard com stats do vault e ações rápidas |
-| Gerador | Gerador de passwords com tamanho, letras, números, símbolos |
-| Verificador | Verificador de força de password em tempo real |
-| Utilizador | Perfil com estatísticas, exportação e eliminação de dados |
-| Definições | Página de settings com tema, timeouts e zona de perigo |
-| Painel Admin | Gestão de utilizadores: ativar/desativar, reset password, eliminar |
-| Auto-delete | Utilizador pode eliminar a sua própria conta |
-
-### 🐳 Infraestrutura
-
-| Feature | Detalhe |
-|---------|---------|
-| Containers | **Docker Compose** — non-root, read-only fs, no-new-privileges |
-| Proxy | **Nginx** — TLS 1.2/1.3, HSTS, CSP, X-Frame-Options |
-| Rede | Container auth **isolado** — só nginx comunica (rede interna) |
-| Deploy | Deploy atómico com backup pré-deploy e rollback instantâneo |
-| Monitorização | Health checks automáticos com alertas Discord/Telegram |
-| Backups | SQLite backup cada 6h + offsite + scripts de restore |
-| Firewall | UFW (deny default, allow 22/80/443) + Docker iptables |
-| SSH hardening | Password auth disabled, MaxAuthTries 3, fail2ban |
-| Disaster recovery | Script de bootstrap para reconstrução total do servidor |
-
----
-
-## 📸 Screenshots
-
-> *Em construção — adicionar screenshots da app aqui.*
-
----
-
-## 🚀 Início Rápido
+## 🚀 Instalação e Execução
 
 ### Pré-requisitos
 
-- **Python 3.11+**
-- **pip**
-- **Tailscale** (para ligação ao servidor de produção)
+- **Python 3.11+** instalado
+- **pip** (gestor de pacotes Python)
+- **Tailscale** instalado e ligado (para acesso ao servidor de autenticação)
 
-### 1. Clonar e instalar
+### 1. Clonar o repositório
 
 ```bash
 git clone https://github.com/blankV0/password-manager.git
 cd password-manager
+```
 
+### 2. Criar ambiente virtual e instalar dependências
+
+```bash
 python -m venv .venv
+
 # Windows
 .venv\Scripts\activate
-# Linux/macOS
+
+# Linux / macOS
 source .venv/bin/activate
 
 pip install -r requirements.txt
 ```
 
-### 2. Configurar
+### 3. Configurar variáveis de ambiente
 
 ```bash
 cp .env.example .env
 ```
 
-Editar `.env` e preencher:
+Editar o ficheiro `.env` e configurar:
 
 ```dotenv
 API_BASE_URL=https://<IP_TAILSCALE_DO_SERVIDOR>
 ```
 
-> **Nota:** Obter o IP Tailscale do servidor com `tailscale ip -4`
-
-### 3. Executar
+### 4. Executar
 
 ```bash
 python main.py
 ```
 
-A app abre a janela de login. Depois de autenticar, acedes ao dashboard com todas as funcionalidades.
+A aplicação abre a janela de login. Após autenticação, acede-se ao dashboard completo.
 
 ---
 
-## ⚙ Configuração
+## 📦 Build para Executável (.exe)
 
-Toda a configuração é feita via variáveis de ambiente no ficheiro `.env`.
-O template `.env.example` documenta cada variável.
+Para distribuir a aplicação sem necessidade de Python instalado:
+
+### 1. Instalar PyInstaller
 
 ```bash
-# Copiar o template
-cp .env.example .env
-
-# Editar com o teu editor preferido
-code .env    # ou: nano .env
+pip install pyinstaller
 ```
 
-> ⚠️ **Nunca commitar o `.env` real** — já está no `.gitignore`.
+### 2. Gerar o executável
+
+```bash
+pyinstaller PasswordManager.spec --noconfirm
+```
+
+### 3. Copiar ficheiros necessários
+
+Após o build, copiar para `dist/PasswordManager/` (ao lado do `.exe`):
+
+```
+dist/PasswordManager/
+├── PasswordManager.exe    ← executável principal
+├── .env                   ← configuração (API_BASE_URL)
+├── data/                  ← preferences.json
+├── certs/                 ← server_ca.pem (certificado TLS)
+├── gerador1/              ← módulos do gerador
+└── logs/                  ← (criado automaticamente)
+```
+
+### 4. Executar
+
+Basta abrir `PasswordManager.exe` — funciona sem Python instalado.
 
 ---
 
-## 🐳 Deploy em Produção
-
-> **Target:** Ubuntu Server + Docker + Nginx + TLS via Tailscale
+## 🐳 Deploy em Produção (Docker)
 
 ### 1. Instalar Docker
 
@@ -278,39 +261,27 @@ sudo usermod -aG docker $USER && newgrp docker
 ```bash
 cp .env.example .env
 python deploy/generate_secrets.py
-# Colar o AUTH_JWT_SECRET gerado no .env
-# Definir APP_ENV=production
+# Configurar AUTH_JWT_SECRET e APP_ENV=production no .env
 ```
 
 ### 3. Certificado TLS
 
-Colocar os certificados em:
+Colocar certificados em `nginx/certs/`:
+- `fullchain.pem`
+- `privkey.pem`
 
-- `nginx/certs/fullchain.pem`
-- `nginx/certs/privkey.pem`
-
-> Suporta: Tailscale cert, Let's Encrypt ou self-signed.
-
-### 4. Firewall
+### 4. Firewall e deploy
 
 ```bash
 sudo ./deploy/ufw_setup.sh
-sudo systemctl restart docker
-```
-
-### 5. Deploy
-
-```bash
 docker compose build && docker compose up -d
 ```
 
-### 6. Validar
+### 5. Validar
 
 ```bash
 ./deploy/healthcheck.sh --host https://<hostname>
 ```
-
-Esperado: health OK, HTTPS ativo, security headers presentes, `/docs` bloqueado.
 
 ---
 
@@ -318,138 +289,122 @@ Esperado: health OK, HTTPS ativo, security headers presentes, `/docs` bloqueado.
 
 ```
 password-manager/
-│
 ├── main.py                          # Entry point — app desktop (Tkinter)
 ├── auth_server.py                   # Entry point — FastAPI auth server
-├── requirements.txt                 # Dependências Python (desktop)
-├── requirements.server.txt          # Dependências Python (servidor Docker)
-├── docker-compose.yml               # Orquestração Docker (auth + nginx)
-├── Dockerfile                       # Multi-stage build, non-root, healthcheck
+├── PasswordManager.spec             # Configuração PyInstaller (.exe build)
+├── requirements.txt                 # Dependências (desktop)
+├── requirements.server.txt          # Dependências (servidor Docker)
+├── docker-compose.yml               # Orquestração Docker
+├── Dockerfile                       # Build do container (multi-stage)
 ├── .env.example                     # Template de variáveis de ambiente
-├── .gitignore                       # Regras git ignore
-├── .dockerignore                    # Regras Docker ignore
 ├── VERSION                          # Versão semântica (1.0.0)
 ├── CHANGELOG.md                     # Histórico de alterações
-├── README.md                        # Este ficheiro
 │
 ├── src/                             # ── Código-fonte principal ──
-│   ├── __init__.py
+│   ├── auth/                        # Módulo servidor (FastAPI)
+│   │   ├── api.py                   #   Endpoints REST (auth, admin)
+│   │   ├── service.py               #   Lógica de negócio (AuthService)
+│   │   ├── database.py              #   Schema SQLite, migrações
+│   │   ├── schemas.py               #   Modelos Pydantic
+│   │   ├── tokens.py                #   JWT + refresh tokens
+│   │   ├── passwords.py             #   Argon2id hash/verify
+│   │   ├── config.py                #   Settings do servidor
+│   │   ├── rate_limiter.py          #   Sliding-window limiter
+│   │   ├── email_service.py         #   SMTP (verificação email)
+│   │   ├── vault_api.py             #   Endpoints vault (zero-knowledge)
+│   │   └── vault_schemas.py         #   Schemas do vault
 │   │
-│   ├── auth/                        #    Módulo de autenticação (servidor)
-│   │   ├── api.py                   #      Endpoints REST (register, login, verify, admin)
-│   │   ├── service.py               #      Lógica de negócio (AuthService)
-│   │   ├── database.py              #      Schema SQLite, migrações, cleanup
-│   │   ├── schemas.py               #      Modelos Pydantic (request/response)
-│   │   ├── tokens.py                #      Criação/decode JWT, hash de refresh tokens
-│   │   ├── passwords.py             #      Argon2id hash/verify/rehash
-│   │   ├── config.py                #      Settings do servidor (frozen dataclass)
-│   │   ├── dependencies.py          #      Wiring DI FastAPI (singleton, auth guard)
-│   │   ├── rate_limiter.py          #      Sliding-window limiter (thread-safe)
-│   │   ├── email_service.py         #      Envio de emails SMTP (verificação)
-│   │   ├── vault_api.py             #      Endpoints REST do vault (zero-knowledge)
-│   │   └── vault_schemas.py         #      Modelos Pydantic do vault
+│   ├── config/                      # Configuração (desktop)
+│   │   └── settings.py              #   Settings centralizados
 │   │
-│   ├── config/                      #    Configuração partilhada (desktop)
-│   │   └── settings.py              #      Settings centralizados (API, email, SMS, UI)
+│   ├── core/                        # Camada criptográfica
+│   │   ├── crypto.py                #   CryptoProvider (KEK/DEK)
+│   │   ├── encryption.py            #   AES-256-GCM
+│   │   ├── key_derivation.py        #   Argon2id KDF
+│   │   └── secure_memory.py         #   Limpeza segura de memória
 │   │
-│   ├── core/                        #    Camada criptográfica
-│   │   ├── crypto.py                #      CryptoProvider (KEK/DEK, wrap/unwrap, encrypt/decrypt)
-│   │   ├── encryption.py            #      Primitivas AES-256-GCM
-│   │   ├── key_derivation.py        #      Argon2id key derivation (t=3, m=64 MiB)
-│   │   └── secure_memory.py         #      secure_zero() + SecureBytes RAII
+│   ├── models/                      # Modelos (desktop)
+│   │   └── local_auth.py            #   Cliente HTTP para a API
 │   │
-│   ├── models/                      #    Modelos de dados (desktop)
-│   │   └── local_auth.py            #      Cliente HTTP para a API auth
+│   ├── services/                    # Serviços auxiliares
+│   │   ├── email_verification.py    #   Fluxo verificação email
+│   │   └── sms_verification.py      #   Verificação SMS
 │   │
-│   ├── services/                    #    Serviços auxiliares (desktop)
-│   │   ├── email_verification.py    #      Fluxo de verificação de email
-│   │   └── sms_verification.py      #      Verificação SMS (Twilio / dev mode)
+│   ├── storage/                     # Vault crypto
+│   │   └── vault_crypto.py          #   Operações criptográficas
 │   │
-│   ├── storage/                     #    Persistência encriptada do vault
-│   │   └── vault_crypto.py          #      Operações criptográficas do vault
+│   ├── ui/                          # Interface gráfica (Tkinter)
+│   │   ├── login_gui.py             #   Login, registo, verificação
+│   │   ├── vault_gui.py             #   Gerenciador (VaultPage)
+│   │   ├── settings_page.py         #   Definições (tema, zona perigo)
+│   │   └── admin_panel.py           #   Painel de administração
 │   │
-│   ├── ui/                          #    Interface gráfica desktop (Tkinter)
-│   │   ├── login_gui.py             #      Ecrãs de login, registo, verificação email
-│   │   ├── vault_gui.py             #      Gerenciador de passwords (VaultPage)
-│   │   ├── vault_entry_dialog.py    #      Diálogo CRUD de entradas
-│   │   ├── password_strength.py     #      Widget indicador de força
-│   │   ├── settings_page.py         #      Página de definições (tema, zona de perigo)
-│   │   └── admin_panel.py           #      Painel de administração (gestão de users)
-│   │
-│   └── utils/                       #    Utilitários
-│       ├── logging_config.py        #      Setup de logging estruturado
-│       └── security_validator.py    #      Validação de input + masking de email/phone
+│   └── utils/                       # Utilitários
+│       ├── logging_config.py        #   Logging estruturado
+│       └── security_validator.py    #   Validação + masking PII
 │
-├── gerador1/                        # ── Módulo gerador/gestor de passwords ──
-│   ├── inicio.py                    #    Página inicial (dashboard com stats)
-│   ├── gerador.py                   #    Gerador de passwords configurável
-│   ├── gerenciador.py               #    Gestão visual de passwords guardadas
-│   ├── verificador.py               #    Verificador de força de password
-│   ├── politicas.py                 #    Políticas de password configuráveis
-│   └── utilizador.py                #    Perfil de utilizador (export, delete)
+├── gerador1/                        # ── Módulos do gerador ──
+│   ├── inicio.py                    #   Dashboard (stats, ações rápidas)
+│   ├── gerador.py                   #   Gerador de passwords
+│   ├── verificador.py               #   Verificador de força
+│   ├── utilizador.py                #   Perfil (export/import/delete)
+│   └── politicas.py                 #   Políticas de password
 │
-├── nginx/                           # ── Reverse proxy (Nginx) ──
-│   ├── nginx.conf                   #    Config global (rate limit zones, timeouts)
-│   ├── conf.d/
-│   │   ├── auth.conf                #    TLS, security headers, proxy rules
-│   │   └── proxy_params.conf        #    Parâmetros de proxy partilhados
-│   └── certs/                       #    Certificados TLS (não commitados)
+├── nginx/                           # ── Reverse proxy ──
+│   ├── nginx.conf                   #   Config global
+│   └── conf.d/                      #   TLS, headers, proxy rules
 │
 ├── deploy/                          # ── Utilidades de deploy ──
-│   ├── generate_secrets.py          #    Gerador de secrets criptográficos
-│   ├── healthcheck.sh               #    Suite de validação pós-deploy
-│   └── ufw_setup.sh                 #    Baseline de firewall UFW
+│   ├── generate_secrets.py          #   Gerador de secrets
+│   ├── healthcheck.sh               #   Validação pós-deploy
+│   └── ufw_setup.sh                 #   Firewall UFW
 │
-├── docker/                          # ── Scripts operacionais Docker ──
-│   └── scripts/
-│       ├── deploy.sh                #    Deploy atómico com backup pré-deploy
-│       ├── rollback.sh              #    Rollback instantâneo
-│       ├── backup_db.sh             #    Backup local da base de dados
-│       ├── backup_offsite.sh        #    Backup offsite
-│       ├── restore_db.sh            #    Restauro de base de dados
-│       ├── bootstrap.sh             #    Disaster recovery (rebuild completo)
-│       ├── health_monitor.sh        #    Monitorização contínua de saúde
-│       ├── alerts.sh                #    Notificações Discord/Telegram
-│       └── harden_server.sh         #    Hardening SSH + fail2ban
+├── docker/scripts/                  # ── Scripts operacionais ──
+│   ├── deploy.sh                    #   Deploy atómico
+│   ├── rollback.sh                  #   Rollback instantâneo
+│   ├── backup_db.sh                 #   Backup local
+│   └── bootstrap.sh                 #   Disaster recovery
 │
-├── certs/                           # ── Certificados (desktop) ──
-│   └── server_ca.pem               #    CA cert para verificação TLS
-│
-├── data/                            # ── Dados persistentes ──
-│   └── preferences.json             #    Preferências UI (tema, timeouts)
-│
-└── logs/                            # ── Logs da aplicação (gitignored) ──
+├── certs/                           # Certificados TLS (desktop)
+├── data/                            # Dados persistentes
+└── logs/                            # Logs (gitignored)
 ```
 
 ---
 
-## 🔧 Variáveis de Ambiente
+## 🛡 Boas Práticas de Segurança
 
-### Cliente Desktop
+### Encriptação e Autenticação
 
-| Variável | Default | Descrição |
-|----------|---------|-----------|
-| `API_BASE_URL` | `https://localhost:8000` | URL do servidor de autenticação |
-| `API_TIMEOUT` | `10` | Timeout de requests HTTP (segundos) |
+| Prática | Implementação |
+|---------|---------------|
+| Hash de passwords | **Argon2id** (vencedor PHC, resistente a GPU/ASIC) — `time_cost=3, memory_cost=64 MiB` |
+| Encriptação do vault | **AES-256-GCM** com arquitetura KEK/DEK — encriptação client-side |
+| Zero-knowledge | Servidor guarda apenas ciphertext — nunca vê passwords em claro |
+| Tokens JWT | Access curto (15 min) + refresh opaco rotativo (7 dias) |
+| Refresh tokens | Apenas SHA-256 do token guardado na DB — leak da DB não compromete sessões |
+| Deteção de reutilização | Token roubado → revoga toda a família de tokens |
 
-### Servidor de Autenticação
+### Proteção contra Ataques
 
-| Variável | Default | Descrição |
-|----------|---------|-----------|
-| `APP_ENV` | `development` | `development` ou `production` |
-| `AUTH_JWT_SECRET` | *(obrigatório em prod)* | Secret para assinatura JWT (512 bits) |
-| `AUTH_JWT_ALGORITHM` | `HS256` | Algoritmo JWT |
-| `AUTH_DB_PATH` | `data/auth.db` | Caminho da base de dados SQLite |
-| `AUTH_ACCESS_TOKEN_TTL_SECONDS` | `900` | Tempo de vida do access token (15 min) |
-| `AUTH_REFRESH_TOKEN_TTL_SECONDS` | `604800` | Tempo de vida do refresh token (7 dias) |
-| `AUTH_ISSUER` | `password-manager-auth` | Issuer nos claims JWT |
-| `AUTH_AUDIENCE` | `password-manager-clients` | Audience nos claims JWT |
-| `AUTH_LOGIN_MAX_FAILURES` | `5` | Tentativas antes de bloqueio |
-| `AUTH_LOGIN_LOCKOUT_SECONDS` | `900` | Duração do bloqueio (15 min) |
-| `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `300` | Janela do rate limiter (5 min) |
-| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `10` | Máximo de tentativas na janela |
-| `AUTH_PASSWORD_MIN_LENGTH` | `12` | Comprimento mínimo de password |
-| `AUTH_LOG_FILE` | `/app/logs/auth.log` | Ficheiro de log do servidor |
+| Prática | Implementação |
+|---------|---------------|
+| SQL Injection | **Imune** — 100% parameterized queries (`?` placeholders) |
+| Brute-force | Lockout (5 falhas → 15 min) + rate limiting duplo (Nginx + FastAPI) |
+| Timing attacks | Sleep constante (350ms) em login falhado — previne enumeração de utilizadores |
+| Input validation | **Pydantic** schemas com validações estritas na fronteira da API |
+| Security gate | Recusa iniciar em produção com JWT secret fraco/default |
+
+### Infraestrutura
+
+| Prática | Implementação |
+|---------|---------------|
+| Docker hardening | Non-root, read-only filesystem, no-new-privileges |
+| Rede isolada | Container auth sem portas expostas — só Nginx comunica |
+| TLS | 1.2/1.3 via Nginx com HSTS, CSP, X-Frame-Options |
+| Firewall | UFW (deny default) + fail2ban (SSH brute-force) |
+| API docs | Bloqueados em produção (`/docs`, `/redoc`, `/openapi.json`) |
+| Audit trail | Todos os eventos de autenticação registados na DB + logs |
 
 ---
 
@@ -457,106 +412,68 @@ password-manager/
 
 ### Autenticação
 
-| Método | Path | Auth | Descrição |
-|--------|------|------|-----------|
-| `POST` | `/auth/register` | — | Criar conta (email + password + username) |
-| `POST` | `/auth/login` | — | Login → JWT access + refresh token |
-| `POST` | `/auth/refresh` | — | Rodar refresh token (rotation + reuse detection) |
-| `POST` | `/auth/logout` | — | Revogar refresh token |
-| `GET` | `/auth/me` | Bearer | Perfil do utilizador atual |
-| `POST` | `/auth/change-password` | Bearer | Alterar password (requer password atual) |
+| Método | Path | Descrição |
+|--------|------|-----------|
+| `POST` | `/auth/register` | Criar conta |
+| `POST` | `/auth/login` | Login → JWT + refresh token |
+| `POST` | `/auth/refresh` | Rodar refresh token |
+| `POST` | `/auth/logout` | Revogar refresh token |
+| `GET` | `/auth/me` | Perfil do utilizador |
+| `POST` | `/auth/change-password` | Alterar password |
 
 ### Verificação de Email
 
-| Método | Path | Auth | Descrição |
-|--------|------|------|-----------|
-| `GET` | `/auth/verify-email` | — | Verificar email via token (link do email) |
-| `POST` | `/auth/resend-verification` | — | Reenviar email de verificação |
-| `GET` | `/auth/check-verified` | — | Verificar se email está confirmado |
+| Método | Path | Descrição |
+|--------|------|-----------|
+| `GET` | `/auth/verify-email` | Verificar email (link) |
+| `POST` | `/auth/resend-verification` | Reenviar email |
+| `GET` | `/auth/check-verified` | Verificar estado |
 
 ### Vault (Zero-Knowledge)
 
-| Método | Path | Auth | Descrição |
-|--------|------|------|-----------|
-| `POST` | `/vault/key` | Bearer | Guardar wrapped DEK + KEK salt (setup) |
-| `GET` | `/vault/key` | Bearer | Obter material criptográfico do vault |
-| `PUT` | `/vault/key` | Bearer | Re-wrap DEK (mudança de master password) |
-| `GET` | `/vault/entries` | Bearer | Listar entradas encriptadas |
-| `POST` | `/vault/entries` | Bearer | Criar nova entrada encriptada |
-| `PUT` | `/vault/entries/{id}` | Bearer | Atualizar entrada encriptada |
-| `DELETE` | `/vault/entries/{id}` | Bearer | Eliminar entrada |
+| Método | Path | Descrição |
+|--------|------|-----------|
+| `POST` | `/vault/key` | Setup — guardar KEK salt + wrapped DEK |
+| `GET` | `/vault/key` | Obter material criptográfico |
+| `GET` | `/vault/entries` | Listar entradas encriptadas |
+| `POST` | `/vault/entries` | Criar entrada |
+| `PUT` | `/vault/entries/{id}` | Atualizar entrada |
+| `DELETE` | `/vault/entries/{id}` | Eliminar entrada |
 
 ### Administração (role=admin)
 
-| Método | Path | Auth | Descrição |
-|--------|------|------|-----------|
-| `POST` | `/auth/admin/users` | Bearer (admin) | Listar todos os utilizadores |
-| `POST` | `/auth/admin/user/active` | Bearer (admin) | Ativar/desativar conta |
-| `POST` | `/auth/admin/user/reset-password` | Bearer (admin) | Reset password de utilizador |
-| `POST` | `/auth/admin/user/delete` | Bearer (admin) | Eliminar conta de utilizador |
-| `POST` | `/auth/admin/logs` | Bearer (admin) | Consultar logs de autenticação |
-| `DELETE` | `/auth/account/delete` | Bearer | Eliminar a própria conta |
-
-### Outros
-
-| Método | Path | Auth | Descrição |
-|--------|------|------|-----------|
-| `GET` | `/health` | — | Health check do servidor |
+| Método | Path | Descrição |
+|--------|------|-----------|
+| `POST` | `/auth/admin/users` | Listar utilizadores |
+| `POST` | `/auth/admin/user/active` | Ativar/desativar conta |
+| `POST` | `/auth/admin/user/reset-password` | Reset password |
+| `POST` | `/auth/admin/user/delete` | Eliminar utilizador |
+| `POST` | `/auth/admin/logs` | Consultar logs |
+| `DELETE` | `/auth/account/delete` | Eliminar própria conta |
 
 ---
 
-## 🛡 Decisões de Segurança
+## 🔧 Variáveis de Ambiente
 
-| Decisão | Porquê |
-|---------|--------|
-| **Argon2id** (não bcrypt) | Vencedor do PHC, resistente a GPU/ASIC, recomendado OWASP |
-| **JWT + refresh opaco** | Access curto (15 min) + refresh rotativo longo (7 dias) |
-| **SHA-256 nos refresh tokens** | Leak da DB não compromete sessões ativas |
-| **Deteção de reutilização** | Token roubado → revoga toda a família de tokens |
-| **Constant-time em login falhado** | Sleep 350ms previne enumeração de users por timing |
-| **Parameterized queries** | 100% das queries SQL usam `?` — imune a SQL injection |
-| **Pydantic schemas** | Validação automática de input na fronteira da API |
-| **AES-256-GCM + KEK/DEK** | Encriptação client-side, servidor nunca vê plaintext |
-| **Security gate no startup** | Bloqueia produção com JWT secret fraco/default |
-| **Docker non-root + read-only** | Limita blast radius de comprometimento do container |
-| **Rate limiting duplo** | Defesa em profundidade: rede (Nginx) + aplicação (FastAPI) |
-| **Rede Docker isolada** | Container auth sem portas expostas, só nginx comunica |
+### Cliente Desktop (`.env`)
 
----
+| Variável | Default | Descrição |
+|----------|---------|-----------|
+| `API_BASE_URL` | `https://localhost:8000` | URL do servidor de autenticação |
+| `API_TIMEOUT` | `10` | Timeout HTTP (segundos) |
 
-## 🛠 Stack Tecnológico
+### Servidor de Autenticação (`.env`)
 
-### Cliente Desktop
-
-| Tecnologia | Versão | Propósito |
-|------------|--------|-----------|
-| Python | 3.11+ | Linguagem principal |
-| Tkinter | stdlib | Interface gráfica desktop |
-| requests | 2.32 | Cliente HTTP para a API |
-| cryptography | 44.0+ | AES-256-GCM (vault encryption) |
-| argon2-cffi | 23.1 | Key derivation (KDF) |
-| python-dotenv | 1.2 | Variáveis de ambiente |
-
-### Servidor
-
-| Tecnologia | Versão | Propósito |
-|------------|--------|-----------|
-| FastAPI | 0.115 | Framework API REST |
-| Uvicorn | 0.34 | Servidor ASGI (HTTP) |
-| SQLite | WAL mode | Base de dados (zero-config) |
-| Argon2id | 23.1 | Hash de passwords |
-| PyJWT | 2.10 | Criação/validação de tokens JWT |
-| Pydantic v2 | (via FastAPI) | Validação de schemas |
-
-### Infraestrutura
-
-| Tecnologia | Versão | Propósito |
-|------------|--------|-----------|
-| Docker | Compose v2 | Containerização |
-| Nginx | 1.27 Alpine | Reverse proxy + TLS termination |
-| Tailscale | — | VPN mesh (comunicação segura) |
-| UFW | — | Firewall (Ubuntu) |
-| fail2ban | — | Proteção contra brute-force SSH |
+| Variável | Default | Descrição |
+|----------|---------|-----------|
+| `APP_ENV` | `development` | Ambiente (`production` bloqueia /docs) |
+| `AUTH_JWT_SECRET` | *(obrigatório)* | Secret JWT (512 bits) |
+| `AUTH_DB_PATH` | `data/auth.db` | Caminho da base de dados |
+| `AUTH_ACCESS_TOKEN_TTL_SECONDS` | `900` | TTL access token (15 min) |
+| `AUTH_REFRESH_TOKEN_TTL_SECONDS` | `604800` | TTL refresh token (7 dias) |
+| `AUTH_LOGIN_MAX_FAILURES` | `5` | Tentativas antes de bloqueio |
+| `AUTH_LOGIN_LOCKOUT_SECONDS` | `900` | Duração do bloqueio (15 min) |
+| `AUTH_PASSWORD_MIN_LENGTH` | `12` | Comprimento mínimo de password |
 
 ---
 
