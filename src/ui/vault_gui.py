@@ -303,13 +303,13 @@ class VaultPage(tk.Frame):
         self.tree.heading("username", text="  UTILIZADOR / EMAIL")
         self.tree.heading("password", text="  PASSWORD")
         self.tree.heading("notes", text="  NOTAS")
-        self.tree.heading("actions", text="  A\u00c7\u00c3O")
+        self.tree.heading("actions", text="  \U0001f441\ufe0f")
 
         self.tree.column("site", width=160, anchor="w")
         self.tree.column("username", width=200, anchor="w")
         self.tree.column("password", width=120, anchor="center")
         self.tree.column("notes", width=220, anchor="w")
-        self.tree.column("actions", width=80, anchor="center")
+        self.tree.column("actions", width=50, anchor="center")
 
         scroll = tk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
@@ -366,7 +366,7 @@ class VaultPage(tk.Frame):
 
             show_pw = entry.id in self._revealed_ids
             pw_text = entry.password if show_pw else self.HIDDEN_PASSWORD
-            action_text = "Ocultar" if show_pw else "Mostrar"
+            action_text = "\U0001f648" if show_pw else "\U0001f441\ufe0f"
 
             self.tree.insert("", "end", iid=entry.id, values=(
                 entry.site, entry.username, pw_text, entry.notes, action_text,
