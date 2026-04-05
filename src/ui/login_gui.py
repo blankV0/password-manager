@@ -1063,6 +1063,13 @@ class LoginApp:
                 self.show_phone_verification_view(email, phone_number, user_name)
             else:
                 logging.warning("[AVISO] Registo falhou para: %s - %s", SecurityValidator.mask_email(email), message)
+                # Traduzir mensagem genérica do servidor
+                if "could not be completed" in (message or "").lower():
+                    message = (
+                        "Não foi possível completar o registo.\n\n"
+                        "O email ou username já podem estar em uso.\n"
+                        "Tente com dados diferentes."
+                    )
                 messagebox.showerror("Erro", message)
 
         except Exception as e:
