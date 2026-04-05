@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from src.auth.dependencies import get_auth_service, get_current_user, require_roles
 from src.auth.schemas import (
+    AdminDeleteUserRequest,
     AdminLogsResponse,
     AdminMessageResponse,
     AdminResetPasswordRequest,
@@ -170,3 +171,32 @@ def admin_get_logs(
     """Devolve os últimos eventos de autenticação."""
     logs = service.admin_get_logs()
     return AdminLogsResponse(logs=logs)
+
+
+@router.post("/admin/user/delete", response_model=AdminMessageResponse)
+def admin_delete_user(
+    payload: AdminDeleteUserRequest,
+    request: Request,
+    admin: UserResponse = Depends(require_roles("admin")),
+    service: AuthService = Depends(get_auth_service),
+) -> AdminMessageResponse:
+    """Elimina permanentemente a conta de um utilizador."""
+    try:
+        service.admin_delete_user(payload.email, _build_context(request))
+        return AdminMessageResponse(message=f"Conta {payload.email} eliminada permanentemente.")
+    except AuthServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+
+@router.delete("/account/delete", response_model=AdminMessageResponse)
+def delete_own_account(
+    request: Request,
+    user: UserResponse = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+) -> AdminMessageResponse:
+    """O utilizador elimina a sua propria conta."""
+    try:
+        service.delete_own_account(user.id, _build_context(request))
+        return AdminMessageResponse(message="Conta eliminada permanentemente.")
+    except AuthServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc

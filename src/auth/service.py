@@ -655,3 +655,52 @@ class AuthService:
         for pattern in weak_patterns:
             if pattern in password_lower:
                 raise AuthServiceError(400, "Password contains a weak or common pattern.")
+
+    def admin_delete_user(self, email: str, context: "AuthContext") -> None:
+        """Admin: delete user account and all associated data."""
+        with self.database.connection() as conn:
+            user = conn.execute("SELECT id, role FROM users WHERE email = ?", (email,)).fetchone()
+            if not user:
+                raise AuthServiceError(404, "Utilizador nao encontrado.")
+            if user["role"] == "admin":
+                raise AuthServiceError(400, "Nao e possivel eliminar uma conta admin.")
+            user_id = user["id"]
+            self._record_event(
+                conn,
+                user_id=user_id,
+                email_hint=SecurityValidator.mask_email(email),
+                event_type="admin_delete_user",
+                success=True,
+                context=context,
+                detail="Deleted user " + email,
+            )
+            conn.execute("DELETE FROM vault_entries WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM vault_keys WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM email_verifications WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM refresh_tokens WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM auth_events WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+    def delete_own_account(self, user_id: str, context: "AuthContext") -> None:
+        """User deletes their own account and all associated data."""
+        with self.database.connection() as conn:
+            user = conn.execute("SELECT id, email, role FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not user:
+                raise AuthServiceError(404, "Utilizador nao encontrado.")
+            if user["role"] == "admin":
+                raise AuthServiceError(400, "Contas admin nao podem ser auto-eliminadas.")
+            self._record_event(
+                conn,
+                user_id=user_id,
+                email_hint=SecurityValidator.mask_email(user["email"]),
+                event_type="self_delete_account",
+                success=True,
+                context=context,
+                detail="User deleted own account",
+            )
+            conn.execute("DELETE FROM vault_entries WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM vault_keys WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM email_verifications WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM refresh_tokens WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM auth_events WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))

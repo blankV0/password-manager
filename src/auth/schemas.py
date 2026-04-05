@@ -72,6 +72,10 @@ class AdminResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=12, max_length=256)
 
 
+class AdminDeleteUserRequest(BaseModel):
+    email: EmailStr
+
+
 class AdminMessageResponse(BaseModel):
     """Resposta admin com campo 'ok' para compatibilidade com _api_post."""
     ok: bool = True

@@ -1,0 +1,163 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# docker-compose.yml — Password Manager Auth Server
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# ARQUITECTURA DE SEGURANÇA:
+#
+#   Internet / Tailscale VPN
+#         │
+#         ▼ (porta 443 / 80)
+#   ┌─────────────┐
+#   │    nginx    │  ← Reverse proxy, TLS termination, rate limiting
+#   │  (alpine)   │    Headers de segurança, bloqueia /docs em produção
+#   └──────┬──────┘
+#          │ rede interna Docker (pm_internal)
+#          ▼ (porta 8000, SEM exposição para o host)
+#   ┌─────────────┐
+#   │  auth app   │  ← FastAPI + Uvicorn, non-root, read-only FS
+#   │  (Python)   │    Argon2id, JWT, rate limiter, audit log
+#   └─────────────┘
+#
+# PRINCÍPIOS:
+#   - Auth container NÃO tem portas expostas para o host
+#   - Apenas o nginx comunica com o auth (rede interna isolada)
+#   - Segredos injectados via env_file, nunca hardcoded
+#   - Volumes nomeados para persistência de dados e logs
+#   - security_opt: no-new-privileges → processos não podem elevar privilégios
+#
+# ═════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # SERVIÇO: auth
+  # O servidor FastAPI. Nunca exposto diretamente para o host.
+  # ──────────────────────────────────────────────────────────────────────────
+  auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # cache_from permite re-usar layers de builds anteriores (CI mais rápido)
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache
+    image: pm-auth:latest
+    container_name: pm_auth
+    restart: unless-stopped
+
+    # Segredos injectados via ficheiro .env (nunca commitado no git)
+    env_file:
+      - .env
+
+    # Volumes persistentes — dados e logs sobrevivem a recreate do container
+    volumes:
+      - auth_data:/app/data     # SQLite auth.db
+      - auth_logs:/app/logs     # auth.log, security.log
+
+    # NÃO tem 'ports:' → NUNCA acessível diretamente do host
+    # Apenas containers na mesma rede interna podem comunicar
+    networks:
+      - pm_internal
+
+    # Hardening de segurança
+    security_opt:
+      - no-new-privileges:true  # Processo não pode usar setuid/setgid
+
+    # Filesystem read-only + tmpfs para /tmp
+    # Malware não consegue escrever para o FS do container
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+
+    # Limitar recursos — previne DoS por consumo de CPU/RAM
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          memory: 64M
+
+    # Healthcheck definido no Dockerfile, mas podemos override aqui
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/health',timeout=4); sys.exit(0 if r.status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # SERVIÇO: nginx
+  # Reverse proxy. Único ponto de entrada externo.
+  # Gere TLS, rate limiting, e security headers.
+  # ──────────────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: pm_nginx
+    restart: unless-stopped
+
+    # Portas expostas para o host
+    # IMPORTANTE: Docker bypassa UFW por defeito via iptables direto.
+    # Ver deploy/ufw_setup.sh para a correção necessária.
+    #
+    # Para Tailscale: se quiseres expor APENAS na rede Tailscale, usa:
+    #   ports:
+    #     - "${TAILSCALE_IP}:443:443"
+    #     - "${TAILSCALE_IP}:80:80"
+    # onde TAILSCALE_IP está no .env (ex: 100.64.1.2)
+    ports:
+      - "443:443"
+      - "80:80"
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro        # Configuração base
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro                # Server blocks
+      - ./nginx/certs:/etc/nginx/certs:ro                  # Certificado TLS
+      - nginx_logs:/var/log/nginx                          # Logs de acesso/erro
+
+    networks:
+      - pm_internal
+
+    # Nginx precisa do auth para arrancar corretamente
+    depends_on:
+      auth:
+        condition: service_healthy
+
+    security_opt:
+      - no-new-privileges:true
+
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=64m,noexec,nosuid
+      - /var/run:size=16m,noexec,nosuid
+      - /tmp:size=16m,noexec,nosuid
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 64M
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REDE INTERNA
+# Bridge network isolada — apenas os containers declarados aqui conseguem
+# comunicar entre si. Sem acesso ao host network por defeito.
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  pm_internal:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: pm_br0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VOLUMES NOMEADOS
+# Persistem entre reinícios e recreate de containers.
+# Armazenados em /var/lib/docker/volumes/ no servidor.
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  auth_data:
+    driver: local
+  auth_logs:
+    driver: local
+  nginx_logs:
+    driver: local
