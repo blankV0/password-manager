@@ -323,7 +323,7 @@ class Dashboard(tk.Frame):
         self.logo.bind("<Button-1>", lambda e: self.mudar_tela("Inicio"))
         
         # Navegação principal
-        self.criar_botao("\U0001f510  Vault", lambda: self.mudar_tela("Vault"))
+        self.criar_botao("\U0001f510  Gerenciador", lambda: self.mudar_tela("Gerenciador"))
         self.criar_botao("\U0001f511  Gerador", lambda: self.mudar_tela("Gerador"))
         self.criar_botao("\U0001f50d  Verificador", lambda: self.mudar_tela("Verificador"))
         
@@ -374,7 +374,7 @@ class Dashboard(tk.Frame):
                 local_auth=self.local_auth,
                 master_password=self._master_password,
             )
-        elif nome_tela == "Vault":
+        elif nome_tela == "Gerenciador":
             page = VaultPage(
                 self.main_container,
                 local_auth=self.local_auth,

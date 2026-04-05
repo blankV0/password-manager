@@ -42,11 +42,11 @@ class utilizador(tk.Frame):
             self, bg="white", highlightthickness=1, highlightbackground="#E9ECEF")
         frame_gestao.pack(fill="x", pady=(0, 20))
 
-        self._criar_linha_acao(frame_gestao, "Exportar Vault", "Exporta todas as passwords do vault para um ficheiro JSON local.", "EXPORTAR", self.btn_preto, self.exportar)
+        self._criar_linha_acao(frame_gestao, "Exportar Gerenciador", "Exporta todas as passwords do gerenciador para um ficheiro JSON local.", "EXPORTAR", self.btn_preto, self.exportar)
 
         tk.Frame(frame_gestao, bg="#E9ECEF", height=1).pack(fill="x", padx=15)
 
-        self._criar_linha_acao(frame_gestao, "Apagar Todos os Dados do Vault", "Remove permanentemente todas as passwords guardadas no vault.", "APAGAR TUDO", self.btn_vermelho, self.apagar_tudo)
+        self._criar_linha_acao(frame_gestao, "Apagar Todos os Dados do Gerenciador", "Remove permanentemente todas as passwords guardadas no gerenciador.", "APAGAR TUDO", self.btn_vermelho, self.apagar_tudo)
 
     def _analisar_vault(self):
         """Analisa as entries do vault para calcular estatísticas."""
@@ -110,7 +110,7 @@ class utilizador(tk.Frame):
     def exportar(self):
         """Exporta os dados do vault para um ficheiro JSON local."""
         if not self._vault:
-            messagebox.showwarning("Aviso", "Vault não inicializado.")
+            messagebox.showwarning("Aviso", "Gerenciador não inicializado.")
             return
 
         entries = self._vault.list_entries()
@@ -121,7 +121,7 @@ class utilizador(tk.Frame):
         destino = filedialog.asksaveasfilename(
             defaultextension=".json",
             filetypes=[("Ficheiro JSON", "*.json")],
-            title="Guardar cópia do vault"
+            title="Guardar cópia do gerenciador"
         )
         if destino:
             try:
@@ -135,7 +135,7 @@ class utilizador(tk.Frame):
                     })
                 with open(destino, "w", encoding="utf-8") as f:
                     json.dump(export_data, f, indent=2, ensure_ascii=False)
-                messagebox.showinfo("Sucesso", "Vault exportado com sucesso!")
+                messagebox.showinfo("Sucesso", "Gerenciador exportado com sucesso!")
             except Exception as e:
                 messagebox.showerror("Erro", f"Não foi possível exportar: {e}")
 
@@ -148,7 +148,7 @@ class utilizador(tk.Frame):
         confirm = messagebox.askyesno(
             "⚠ Apagar Tudo",
             "ATENÇÃO: Esta ação é IRREVERSÍVEL!\n\n"
-            "Todas as passwords do vault serão eliminadas permanentemente.\n\n"
+            "Todas as passwords do gerenciador serão eliminadas permanentemente.\n\n"
             "Tens a certeza?",
         )
         if not confirm:
@@ -156,7 +156,7 @@ class utilizador(tk.Frame):
 
         confirm2 = messagebox.askyesno(
             "Última Confirmação",
-            "Esta é a última confirmação.\n\nApagar todas as passwords do vault?",
+            "Esta é a última confirmação.\n\nApagar todas as passwords do gerenciador?",
         )
         if not confirm2:
             return

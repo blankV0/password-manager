@@ -80,7 +80,7 @@ class VaultService:
 
             self._sync_from_server()
             self._is_ready = True
-            return True, "Vault desbloqueado com sucesso."
+            return True, "Gerenciador desbloqueado com sucesso."
 
         except VaultCryptoError as exc:
             logger.warning("[VAULT] Crypto error: %s", exc)
@@ -334,7 +334,7 @@ class VaultPage(tk.Frame):
 
         # Status bar
         self._status = tk.Label(
-            self, text="A inicializar o vault\u2026", font=("Segoe UI", 9),
+            self, text="A inicializar o gerenciador\u2026", font=("Segoe UI", 9),
             bg=tc["bg"], fg=tc["muted"], anchor="w",
         )
         self._status.pack(fill="x", pady=(8, 0))
@@ -347,7 +347,7 @@ class VaultPage(tk.Frame):
         success, message = self._service.initialize()
         if not success:
             self._status.config(text=f"Erro: {message}", fg="#e74c3c")
-            messagebox.showerror("Vault", message)
+            messagebox.showerror("Gerenciador", message)
             return
         self._load_entries()
         count = len(self._entries_by_id)

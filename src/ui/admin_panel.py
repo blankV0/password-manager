@@ -310,7 +310,7 @@ class AdminPanel(tk.Frame):
             f"ATENÇÃO: Esta ação é IRREVERSÍVEL!\n\n"
             f"Todos os dados do utilizador serão eliminados:\n"
             f"  • Conta e credenciais\n"
-            f"  • Todas as passwords do vault\n"
+            f"  • Todas as passwords do gerenciador\n"
             f"  • Tokens e verificações\n\n"
             f"Eliminar permanentemente:\n{email}?",
         )

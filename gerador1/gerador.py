@@ -60,7 +60,7 @@ class gerador(tk.Frame):
         #botoes
         tk.Button(frame_unica_container, text="GERAR", command=self.gerar_uma_apenas, bg="#2C2F33", fg="white", font=("Segoe UI", 9, "bold"), padx=15, cursor="hand2", relief="flat").pack(side="left", ipady=6)
         tk.Button(frame_unica_container, text="COPIAR", command=self.copy_unica, bg="#E9ECEF", fg="#2C2F33", font=("Segoe UI", 9, "bold"), padx=15, cursor="hand2", relief="flat").pack(side="left", padx=(5, 0), ipady=6)
-        self._btn_vault = tk.Button(frame_unica_container, text="\U0001f510 VAULT", command=self._guardar_no_vault, bg="#6c63ff", fg="white", font=("Segoe UI", 9, "bold"), padx=15, cursor="hand2", relief="flat")
+        self._btn_vault = tk.Button(frame_unica_container, text="\U0001f510 GERENCIADOR", command=self._guardar_no_vault, bg="#6c63ff", fg="white", font=("Segoe UI", 9, "bold"), padx=15, cursor="hand2", relief="flat")
         self._btn_vault.pack(side="left", padx=(5, 0), ipady=6)
         if not self._local_auth:
             self._btn_vault.pack_forget()
@@ -150,15 +150,15 @@ class gerador(tk.Frame):
         """Abre um diálogo para guardar a password gerada diretamente no Vault."""
         senha = self.var_unica.get()
         if not senha:
-            messagebox.showinfo("Vault", "Gera uma password primeiro.")
+            messagebox.showinfo("Gerenciador", "Gera uma password primeiro.")
             return
         if not self._local_auth:
-            messagebox.showerror("Vault", "Sessão não disponível.")
+            messagebox.showerror("Gerenciador", "Sessão não disponível.")
             return
 
         # ── Mini diálogo: pedir Serviço e Utilizador ──
         dialog = tk.Toplevel(self)
-        dialog.title("Guardar no Vault")
+        dialog.title("Guardar no Gerenciador")
         dialog.geometry("400x360")
         dialog.configure(bg="white")
         dialog.transient(self.winfo_toplevel())
@@ -173,7 +173,7 @@ class gerador(tk.Frame):
         lbl_style = {"font": ("Segoe UI", 8, "bold"), "bg": "white", "fg": "#999"}
         ent_style = {"font": ("Segoe UI", 10), "bg": "#F8F9FA", "relief": "flat"}
 
-        tk.Label(dialog, text="Guardar no Vault", font=("Segoe UI", 14, "bold"),
+        tk.Label(dialog, text="Guardar no Gerenciador", font=("Segoe UI", 14, "bold"),
                  bg="white", fg="#2C2F33").pack(anchor="w", padx=24, pady=(20, 16))
 
         tk.Label(dialog, text="SERVIÇO", **lbl_style).pack(anchor="w", padx=24)
@@ -216,16 +216,16 @@ class gerador(tk.Frame):
             svc = VaultService(self._local_auth, self._master_password)
             ok, msg = svc.initialize()
             if not ok:
-                messagebox.showerror("Vault", f"Erro ao abrir o vault: {msg}")
+                messagebox.showerror("Gerenciador", f"Erro ao abrir o gerenciador: {msg}")
                 return
             entry = svc.add_entry(site, username, password, "")
             svc.lock()
             if entry:
-                messagebox.showinfo("Vault", f"Credencial para '{site}' guardada no Vault! \U0001f510")
+                messagebox.showinfo("Gerenciador", f"Credencial para '{site}' guardada no Gerenciador! \U0001f510")
             else:
-                messagebox.showerror("Vault", "Falha ao guardar no vault.")
+                messagebox.showerror("Gerenciador", "Falha ao guardar no gerenciador.")
         except Exception as exc:
-            messagebox.showerror("Vault", f"Erro: {exc}")
+            messagebox.showerror("Gerenciador", f"Erro: {exc}")
 
     #copia toda a lista de passwords
     def copiar_texto(self):

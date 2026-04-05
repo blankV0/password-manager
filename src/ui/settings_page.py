@@ -416,7 +416,7 @@ class SettingsPage(tk.Frame):
             tk.Label(
                 danger_card,
                 text="Esta ação é IRREVERSÍVEL. A tua conta, todas as passwords\n"
-                     "do vault e todos os dados associados serão eliminados permanentemente.",
+                     "do gerenciador e todos os dados associados serão eliminados permanentemente.",
                 font=("Segoe UI", 9),
                 bg=self.c["card"], fg=self.c["danger"],
                 justify="left",
@@ -530,7 +530,7 @@ class SettingsPage(tk.Frame):
             "ATENÇÃO: Esta ação é IRREVERSÍVEL!\n\n"
             "Todos os teus dados serão eliminados:\n"
             "  • A tua conta e credenciais\n"
-            "  • Todas as passwords do vault\n"
+            "  • Todas as passwords do gerenciador\n"
             "  • Tokens e verificações\n\n"
             "Tens a certeza que queres eliminar a tua conta?",
         )

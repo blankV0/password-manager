@@ -29,7 +29,7 @@ class inicio(tk.Frame):
         elif repetidas > 0:
             sub_msg = "Tens passwords repetidas. Considera alterá-las."
         else:
-            sub_msg = "O teu vault está protegido e atualizado."
+            sub_msg = "O teu gerenciador está protegido e atualizado."
 
         tk.Label(self, text=sub_msg, font=("Segoe UI", 10), bg="white", fg="#999").pack(anchor="w", pady=(0, 30))
 
@@ -46,7 +46,7 @@ class inicio(tk.Frame):
         # Cartao 2: estado do vault
         card2 = tk.Frame(frame_cards, **self.card_style)
         card2.pack(side="left", fill="both", expand=True, padx=10)
-        tk.Label(card2, text="ESTADO DO VAULT", font=("Segoe UI", 8, "bold"), bg="#F8F9FA", fg="#999").pack()
+        tk.Label(card2, text="ESTADO DO GERENCIADOR", font=("Segoe UI", 8, "bold"), bg="#F8F9FA", fg="#999").pack()
 
         if total_pass == 0:
             estado_txt, estado_cor = "VAZIO", "#BBB"
@@ -73,8 +73,8 @@ class inicio(tk.Frame):
         tk.Button(self, text="GERAR NOVA PASSWORD", **self.btn_base, bg="#2C2F33", fg="white",
                   command=lambda: self.master_app.mudar_tela("Gerador")).pack(fill="x", ipady=15, pady=5)
 
-        tk.Button(self, text="ABRIR O VAULT", **self.btn_base, bg="#E9ECEF", fg="#2C2F33",
-                  command=lambda: self.master_app.mudar_tela("Vault")).pack(fill="x", ipady=15, pady=5)
+        tk.Button(self, text="ABRIR O GERENCIADOR", **self.btn_base, bg="#E9ECEF", fg="#2C2F33",
+                  command=lambda: self.master_app.mudar_tela("Gerenciador")).pack(fill="x", ipady=15, pady=5)
 
     def _analisar_vault(self):
         """Analisa as entries do vault para calcular estatísticas de segurança."""
