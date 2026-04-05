@@ -311,14 +311,15 @@ class LocalAuth:
         if phone_number and not SMSVerification.is_valid_phone(phone_number):
             return False, "Número de telemóvel inválido.", None
 
-        success, message, data = self._api_post(
-            "/auth/register",
-            {
-                "email": email,
-                "password": password,
-                "username": username or None,
-            },
-        )
+        payload = {
+            "email": email,
+            "password": password,
+            "username": username or None,
+        }
+        if phone_number:
+            payload["phone_number"] = phone_number
+
+        success, message, data = self._api_post("/auth/register", payload)
         if not success:
             status = data.get("_status") if isinstance(data, dict) else None
             _registration_logger.warning(
