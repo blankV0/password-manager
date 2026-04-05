@@ -60,6 +60,8 @@ class AdminPanel(tk.Frame):
     # ── UI principal ──────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        self._selected_row = None  # (row_frame, original_bg)
+
         # ── Barra de acções ──────────────────────────────────────────
         actions = tk.Frame(self, bg=self.c["bg"])
         actions.pack(fill="x", pady=(0, 12))
@@ -112,8 +114,8 @@ class AdminPanel(tk.Frame):
             ("🔄  Atualizar lista", self.c["accent"], self._refresh_users),
             ("✅  Ativar", self.c["success"], lambda: self._set_active(True)),
             ("🚫  Desativar", self.c["danger"], lambda: self._set_active(False)),
-            ("�  Eliminar", "#dc2626", self._delete_user),
-            ("�🔑  Reset password", "#f59e0b", self._reset_password),
+            ("X  Eliminar", "#dc2626", self._delete_user),
+            ("*  Reset password", "#f59e0b", self._reset_password),
             ("📋  Ver logs", self.c["border"], self._show_logs),
         ]
         for text, bg_color, cmd in buttons:
@@ -229,12 +231,30 @@ class AdminPanel(tk.Frame):
                 ).pack(side="left")
 
             # Clique na linha preenche o email
-            row.bind("<Button-1>", lambda e, em=email: self._select_user(em))
+            row.bind("<Button-1>", lambda e, em=email, r=row, ob=bg: self._select_user(em, r, ob))
             for child in row.winfo_children():
-                child.bind("<Button-1>", lambda e, em=email: self._select_user(em))
+                child.bind("<Button-1>", lambda e, em=email, r=row, ob=bg: self._select_user(em, r, ob))
 
-    def _select_user(self, email: str) -> None:
-        """Preenche o campo de email com o utilizador selecionado."""
+    def _select_user(self, email: str, row: tk.Frame | None = None, orig_bg: str | None = None) -> None:
+        """Preenche o campo de email e destaca a linha selecionada."""
+        # Restaurar linha anterior
+        if self._selected_row:
+            prev_row, prev_bg = self._selected_row
+            try:
+                prev_row.config(bg=prev_bg)
+                for child in prev_row.winfo_children():
+                    child.config(bg=prev_bg)
+            except tk.TclError:
+                pass
+
+        # Destacar nova linha
+        if row:
+            sel_bg = self.c["accent"]
+            row.config(bg=sel_bg)
+            for child in row.winfo_children():
+                child.config(bg=sel_bg, fg="white")
+            self._selected_row = (row, orig_bg)
+
         self.target_email.delete(0, tk.END)
         self.target_email.insert(0, email)
 

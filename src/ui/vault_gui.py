@@ -329,6 +329,9 @@ class VaultPage(tk.Frame):
         self.tree.bind("<Button-1>", self._tree_on_click)
         self.tree.bind("<Double-1>", lambda _: self._on_edit())
 
+        # Tag para entradas inseguras (password fraca)
+        self.tree.tag_configure("insecure", foreground=tc["danger"])
+
         # Status bar
         self._status = tk.Label(
             self, text="A inicializar o vault\u2026", font=("Segoe UI", 9),
@@ -362,6 +365,20 @@ class VaultPage(tk.Frame):
         self._entries_by_id = {e.id: e for e in entries}
         self._apply_filter()
 
+    @staticmethod
+    def _is_weak_password(pw: str) -> bool:
+        """Verifica se a password é fraca (< 8 chars, sem dígitos, sem especiais, sem maiúsculas)."""
+        import re
+        if len(pw) < 8:
+            return True
+        if not re.search(r"[A-Z]", pw):
+            return True
+        if not re.search(r"[0-9]", pw):
+            return True
+        if not re.search(r"[^A-Za-z0-9]", pw):
+            return True
+        return False
+
     def _apply_filter(self) -> None:
         query = self.search_var.get().strip().lower() if hasattr(self, "search_var") else ""
 
@@ -377,9 +394,11 @@ class VaultPage(tk.Frame):
             pw_text = entry.password if show_pw else self.HIDDEN_PASSWORD
             action_text = "\U0001f648" if show_pw else "\U0001f441\ufe0f"
 
+            tags = ("insecure",) if self._is_weak_password(entry.password) else ()
+
             self.tree.insert("", "end", iid=entry.id, values=(
                 entry.site, entry.username, pw_text, entry.notes, action_text,
-            ))
+            ), tags=tags)
 
     def _get_selected_id(self) -> str | None:
         sel = self.tree.selection()

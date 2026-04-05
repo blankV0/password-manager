@@ -422,7 +422,7 @@ class SettingsPage(tk.Frame):
                 justify="left",
             ).pack(anchor="w")
             del_btn = tk.Label(
-                danger_card, text="🗑  Eliminar a minha conta",
+                danger_card, text="X  Eliminar a minha conta",
                 font=("Segoe UI", 10, "bold"),
                 bg=self.c["danger"], fg="white",
                 padx=16, pady=8, cursor="hand2",
