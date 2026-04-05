@@ -602,3 +602,83 @@ class LocalAuth:
             bool: True se existe, False caso contrário
         """
         return False
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # VAULT API — encrypted vault sync (Phase 3, zero-knowledge)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def vault_get_key(self) -> Dict[str, Any]:
+        """GET /vault/key — fetch wrapped DEK material."""
+        return self._vault_request("GET", "/vault/key")
+
+    def vault_setup_key(self, payload: Dict[str, str]) -> Dict[str, Any]:
+        """POST /vault/key — store wrapped DEK + salt (first-time)."""
+        return self._vault_request("POST", "/vault/key", payload=payload)
+
+    def vault_rewrap_key(self, payload: Dict[str, str]) -> Dict[str, Any]:
+        """PUT /vault/key — re-wrap DEK after master password change."""
+        return self._vault_request("PUT", "/vault/key", payload=payload)
+
+    def vault_list_entries(self) -> Dict[str, Any]:
+        """GET /vault/entries — list all encrypted entries."""
+        return self._vault_request("GET", "/vault/entries")
+
+    def vault_create_entry(self, payload: Dict[str, str]) -> Dict[str, Any]:
+        """POST /vault/entries — store a new encrypted entry."""
+        return self._vault_request("POST", "/vault/entries", payload=payload)
+
+    def vault_update_entry(self, entry_id: str, payload: Dict[str, str]) -> Dict[str, Any]:
+        """PUT /vault/entries/{id} — update an encrypted entry."""
+        return self._vault_request("PUT", f"/vault/entries/{entry_id}", payload=payload)
+
+    def vault_delete_entry(self, entry_id: str) -> Dict[str, Any]:
+        """DELETE /vault/entries/{id} — delete an encrypted entry."""
+        return self._vault_request("DELETE", f"/vault/entries/{entry_id}")
+
+    def _vault_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generic request to /vault/* endpoints.
+        Uses the base URL directly (not /auth prefix).
+        """
+        if self.disabled:
+            raise AuthError("API não configurada.")
+        if not self.auth_token:
+            raise AuthError("Não autenticado.")
+
+        url = f"{self.api_base_url}{path}"
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "PasswordManager/1.0",
+            "Authorization": f"Bearer {self.auth_token}",
+        }
+        try:
+            response = self.session.request(
+                method=method.upper(),
+                url=url,
+                json=payload,
+                headers=headers,
+                timeout=10,
+                verify=self._get_verify(),
+            )
+        except RequestException as exc:
+            raise AuthError(f"Vault API error: {exc}") from exc
+
+        data: Dict[str, Any] = {}
+        if response.content:
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+
+        if not response.ok:
+            msg = data.get("detail") or data.get("message") or f"HTTP {response.status_code}"
+            raise AuthError(msg)
+
+        return data

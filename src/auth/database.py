@@ -95,6 +95,32 @@ class AuthDatabase:
                 CREATE INDEX IF NOT EXISTS idx_refresh_expires_at ON refresh_tokens(expires_at);
                 CREATE INDEX IF NOT EXISTS idx_auth_events_created_at ON auth_events(created_at);
                 CREATE INDEX IF NOT EXISTS idx_auth_events_user_id ON auth_events(user_id);
+
+                -- ── Vault (Phase 3): encrypted vault storage ────────────
+                -- Server stores ONLY opaque ciphertext. Zero-knowledge.
+                CREATE TABLE IF NOT EXISTS vault_keys (
+                    user_id TEXT PRIMARY KEY,
+                    wrapped_dek TEXT NOT NULL,
+                    dek_nonce TEXT NOT NULL,
+                    dek_tag TEXT NOT NULL,
+                    kek_salt TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS vault_entries (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    encrypted_data TEXT NOT NULL,
+                    nonce TEXT NOT NULL,
+                    tag TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_vault_entries_user_id ON vault_entries(user_id);
                 """
             )
 

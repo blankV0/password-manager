@@ -441,6 +441,7 @@ class LoginApp:
         self.login_attempts = {}
         self.current_email = None
         self.session_started_at = None
+        self._vault_master_password: str = ""
 
         # Variáveis para dragging
         self.offset_x = 0
@@ -839,6 +840,8 @@ class LoginApp:
                         logging.info("[OK] Login bem-sucedido para: %s", SecurityValidator.mask_email(login_input))
                         access_token = tokens.get("access_token")
                         self.current_email = login_input
+                        # Guardar password temporariamente para derivação KEK do vault
+                        self._vault_master_password = password
                         if self.on_login_success and access_token:
                             self.on_login_success(access_token)
                         else:
@@ -856,6 +859,7 @@ class LoginApp:
                         self.session_started_at = datetime.now()
                         logging.info("[OK] Login bem-sucedido por telemóvel: %s", SecurityValidator.mask_phone(login_input))
                         self.current_email = email
+                        self._vault_master_password = password
                         if self.on_login_success and self.local_auth.auth_token:
                             self.on_login_success(self.local_auth.auth_token)
                         else:

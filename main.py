@@ -48,6 +48,7 @@ from gerador1.politicas import politicas
 from src.ui.settings_page import SettingsPage, get_theme_colors, _load_prefs, apply_theme_recursive
 from src.ui.admin_panel import AdminPanel
 from src.models.local_auth import LocalAuth
+from src.ui.vault_gui import VaultWindow
 
 
 class AppController:
@@ -188,6 +189,8 @@ class AppController:
             
             # Guardar referência ao local_auth do LoginApp (tem tokens/role)
             self._local_auth = self.login_app.local_auth if self.login_app else LocalAuth()
+            # Guardar master password para vault (KEK derivation)
+            self._master_password = getattr(self.login_app, '_vault_master_password', '') or ''
             self.login_app = None
             
             # Cria o dashboard
@@ -262,6 +265,7 @@ class AppController:
             dashboard_area, access_token, self._on_logout,
             local_auth=self._local_auth, theme_colors=tc,
             on_rebuild=lambda: self._rebuild_dashboard(access_token),
+            master_password=self._master_password,
         )
         self.dashboard.pack(fill="both", expand=True)
 
@@ -278,6 +282,8 @@ class AppController:
     def _on_logout(self) -> None:
         """Chamado quando o utilizador faz logout."""
         self.logger.info("[APP] Logout realizado. Voltando ao login.")
+        # Limpar master password da memória
+        self._master_password = ""
         self._open_login_window()
 
 
@@ -293,6 +299,7 @@ class Dashboard(tk.Frame):
         local_auth: LocalAuth | None = None,
         theme_colors: dict | None = None,
         on_rebuild=None,
+        master_password: str = "",
     ):
         self.tc = theme_colors or get_theme_colors("light")
         super().__init__(master, bg=self.tc["bg"])
@@ -300,6 +307,7 @@ class Dashboard(tk.Frame):
         self.on_logout = on_logout_callback
         self.local_auth = local_auth or LocalAuth()
         self.on_rebuild = on_rebuild
+        self._master_password = master_password
         self._active_btn: tk.Label | None = None
         
         # Sidebar
@@ -316,9 +324,10 @@ class Dashboard(tk.Frame):
         self.logo.bind("<Button-1>", lambda e: self.mudar_tela("Inicio"))
         
         # Navegação principal
-        self.criar_botao("📁  Gerenciador", lambda: self.mudar_tela("Gerenciador"))
-        self.criar_botao("🔑  Gerador", lambda: self.mudar_tela("Gerador"))
-        self.criar_botao("🔍  Verificador", lambda: self.mudar_tela("Verificador"))
+        self.criar_botao("\U0001f510  Vault", lambda: self._open_vault())
+        self.criar_botao("\U0001f4c1  Gerenciador", lambda: self.mudar_tela("Gerenciador"))
+        self.criar_botao("\U0001f511  Gerador", lambda: self.mudar_tela("Gerador"))
+        self.criar_botao("\U0001f50d  Verificador", lambda: self.mudar_tela("Verificador"))
         
         # Espaçador flexível — empurra os botões abaixo para o fundo
         spacer = tk.Frame(self.sidebar, bg=self.tc["sidebar"])
@@ -395,6 +404,14 @@ class Dashboard(tk.Frame):
         """Callback chamado pela SettingsPage quando o tema muda."""
         if self.on_rebuild:
             self.on_rebuild()
+
+    def _open_vault(self) -> None:
+        """Abre a janela do Vault encriptado."""
+        VaultWindow(
+            self,
+            local_auth=self.local_auth,
+            master_password=self._master_password,
+        )
 
     def criar_botao(self, texto: str, comando, vermelho: bool = False, destaque: bool = False) -> tk.Label:
         """Cria um botão no sidebar."""

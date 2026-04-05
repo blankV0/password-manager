@@ -23,6 +23,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.auth import auth_router, get_current_user
+from src.auth.vault_api import router as vault_router
 from src.auth.schemas import UserResponse
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,10 +98,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 app.include_router(auth_router)
+app.include_router(vault_router)
 
 
 @app.get("/health")
