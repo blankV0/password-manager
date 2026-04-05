@@ -38,7 +38,7 @@ class verificador(tk.Frame):
 
         # CHECKLIST
         self.requisitos = {
-            "len": "Mínimo 8 caracteres",
+            "len": "Mínimo 12 caracteres",
             "upp": "Letra Maiúscula",
             "low": "Letra Minúscula",  
             "num": "Números",
@@ -63,7 +63,7 @@ class verificador(tk.Frame):
 
         #verificaçao
         checks = {
-            "len": len(pwd) >= 8, #pa verificar o comprimento minimo(se 8 for pouco metemos 16)
+            "len": len(pwd) >= 12, #verificar o comprimento minimo (12 caracteres)
             "upp": any(c.isupper() for c in pwd), #verificar se tem maiusculas
             "low": any(c.islower() for c in pwd), #verifica se tem minusculas 
             "num": any(c.isdigit() for c in pwd), #verifica se tem numeros
