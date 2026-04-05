@@ -316,7 +316,6 @@ class LocalAuth:
             {
                 "email": email,
                 "password": password,
-                "phone_number": phone_number,
                 "username": username or None,
             },
         )
