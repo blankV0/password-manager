@@ -25,7 +25,11 @@ import ctypes
 
 # Setup do ambiente
 def _setup_environment() -> Path:
-    project_root = Path(__file__).resolve().parent
+    if getattr(sys, "frozen", False):
+        # PyInstaller .exe — raiz = pasta do executável
+        project_root = Path(sys.executable).resolve().parent
+    else:
+        project_root = Path(__file__).resolve().parent
     return project_root
 
 

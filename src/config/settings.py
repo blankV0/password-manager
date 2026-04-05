@@ -8,10 +8,18 @@ NUNCA guardar segredos neste ficheiro — usar .env (que está no .gitignore).
 """
 
 import os
+import sys
 from pathlib import Path
 
 # ── Diretório raiz da aplicação ──────────────────────────────────────────────
-APP_ROOT = Path(__file__).resolve().parent.parent.parent
+# Suporte para PyInstaller: quando executado como .exe, sys._MEIPASS aponta
+# para a pasta temporária; mas os ficheiros de dados (.env, data/, certs/)
+# estão ao lado do .exe (sys.executable).
+if getattr(sys, "frozen", False):
+    # Executável PyInstaller — APP_ROOT = pasta onde está o .exe
+    APP_ROOT = Path(sys.executable).resolve().parent
+else:
+    APP_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def _load_dotenv(dotenv_path: Path) -> None:
