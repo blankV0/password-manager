@@ -256,14 +256,17 @@ class VaultPage(tk.Frame):
         toolbar.pack(fill="x", pady=(0, 10))
 
         btn_dark = {"bg": "#2C2F33", "fg": "white", "font": ("Segoe UI", 9, "bold"),
-                    "relief": "flat", "cursor": "hand2", "padx": 14}
+                    "relief": "flat", "cursor": "hand2", "padx": 14,
+                    "activebackground": "#2C2F33", "activeforeground": "white"}
         btn_light = {"bg": tc["border"], "fg": tc["text"], "font": ("Segoe UI", 9, "bold"),
-                     "relief": "flat", "cursor": "hand2", "padx": 14}
+                     "relief": "flat", "cursor": "hand2", "padx": 14,
+                     "activebackground": tc["border"], "activeforeground": tc["text"]}
 
         tk.Button(toolbar, text="ADICIONAR", command=self._on_add, **btn_dark).pack(side="left", ipady=8)
         tk.Button(toolbar, text="EDITAR", command=self._on_edit, **btn_dark).pack(side="left", padx=8, ipady=8)
-        tk.Button(toolbar, text="APAGAR", command=self._on_delete, **btn_light).pack(side="left", ipady=8)
-        tk.Button(toolbar, text="ATUALIZAR", command=self._on_refresh, **btn_light).pack(side="left", padx=8, ipady=8)
+        tk.Button(toolbar, text="DETALHES", command=self._on_details, **btn_dark).pack(side="left", ipady=8)
+        tk.Button(toolbar, text="APAGAR", command=self._on_delete, **btn_light).pack(side="left", padx=8, ipady=8)
+        tk.Button(toolbar, text="ATUALIZAR", command=self._on_refresh, **btn_light).pack(side="left", ipady=8)
 
         # Search
         search_row = tk.Frame(self, bg=tc["bg"])
@@ -326,7 +329,7 @@ class VaultPage(tk.Frame):
         scroll.pack(side="right", fill="y")
 
         self.tree.bind("<Button-1>", self._tree_on_click)
-        self.tree.bind("<Double-1>", lambda _: self._on_edit())
+        self.tree.bind("<Double-1>", lambda _: self._on_details())
 
         # Tag para entradas inseguras (password fraca) e repetidas
         self.tree.tag_configure("insecure", foreground=tc["danger"])
@@ -484,6 +487,7 @@ class VaultPage(tk.Frame):
                     pw_row, text="\U0001f441\ufe0f", command=_toggle_pw,
                     bg="#E9ECEF", fg="#2C2F33", font=("Segoe UI", 10),
                     relief="flat", cursor="hand2", padx=8,
+                    activebackground="#E9ECEF", activeforeground="#2C2F33",
                 )
                 _toggle_btn.pack(side="right", padx=(6, 0), ipady=4)
                 if initial:
@@ -499,6 +503,7 @@ class VaultPage(tk.Frame):
                         pw_row, text="\U0001f4cb", command=_copy_pw,
                         bg="#E9ECEF", fg="#2C2F33", font=("Segoe UI", 10),
                         relief="flat", cursor="hand2", padx=8,
+                        activebackground="#E9ECEF", activeforeground="#2C2F33",
                     ).pack(side="right", padx=(6, 0), ipady=4)
             else:
                 ent = tk.Entry(dialog, show=show, **ent_style)
@@ -526,10 +531,12 @@ class VaultPage(tk.Frame):
 
         tk.Button(btn_frame, text="GUARDAR", command=save,
                   bg="#2C2F33", fg="white", font=("Segoe UI", 9, "bold"),
-                  relief="flat", cursor="hand2", padx=20).pack(side="right", ipady=6)
+                  relief="flat", cursor="hand2", padx=20,
+                  activebackground="#2C2F33", activeforeground="white").pack(side="right", ipady=6)
         tk.Button(btn_frame, text="CANCELAR", command=dialog.destroy,
                   bg="#E9ECEF", fg="#2C2F33", font=("Segoe UI", 9, "bold"),
-                  relief="flat", cursor="hand2", padx=16).pack(side="right", padx=(0, 8), ipady=6)
+                  relief="flat", cursor="hand2", padx=16,
+                  activebackground="#E9ECEF", activeforeground="#2C2F33").pack(side="right", padx=(0, 8), ipady=6)
 
         self.wait_window(dialog)
         return result["value"]
@@ -570,6 +577,111 @@ class VaultPage(tk.Frame):
             self._apply_filter()
         else:
             messagebox.showerror("Erro", "Falha ao atualizar a entrada.")
+
+    def _on_details(self) -> None:
+        """Abre diálogo read-only com os detalhes da credencial selecionada."""
+        entry_id = self._get_selected_id()
+        if not entry_id:
+            messagebox.showinfo("Detalhes", "Selecione uma entrada primeiro.")
+            return
+        current = self._entries_by_id.get(entry_id)
+        if not current:
+            return
+        self._show_details_dialog(current)
+
+    def _show_details_dialog(self, entry: VaultEntry) -> None:
+        """Mostra diálogo read-only com os detalhes da credencial."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Detalhes da Credencial")
+        dialog.geometry("420x440")
+        dialog.configure(bg="white")
+        dialog.transient(self.winfo_toplevel())
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        dialog.update_idletasks()
+        sx = dialog.winfo_screenwidth()
+        sy = dialog.winfo_screenheight()
+        dialog.geometry(f"+{(sx - 420) // 2}+{(sy - 440) // 2}")
+
+        pad = {"padx": 24}
+        lbl_style = {"font": ("Segoe UI", 8, "bold"), "bg": "white", "fg": "#999"}
+        ro_bg = "#F0F1F3"
+        copy_btn = {
+            "bg": "#E9ECEF", "fg": "#2C2F33", "font": ("Segoe UI", 10),
+            "relief": "flat", "cursor": "hand2", "padx": 8,
+            "activebackground": "#E9ECEF", "activeforeground": "#2C2F33",
+        }
+
+        tk.Label(dialog, text="Detalhes da Credencial", font=("Segoe UI", 14, "bold"),
+                 bg="white", fg="#2C2F33").pack(anchor="w", **pad, pady=(20, 16))
+
+        def _copy(value: str, label: str = "") -> None:
+            if not value:
+                return
+            dialog.clipboard_clear()
+            dialog.clipboard_append(value)
+            dialog.update_idletasks()
+            if label == "Password":
+                self.after(30_000, self._clear_clipboard)
+                self._status.config(text="Password copiada! Clipboard limpo em 30s.", fg="#6c63ff")
+            else:
+                self._status.config(text=f"{label} copiado!", fg="#6c63ff")
+
+        def _make_readonly(parent, value: str, copy_label: str = ""):
+            row = tk.Frame(parent, bg="white")
+            row.pack(fill="x", **pad, pady=(4, 10))
+            ent = tk.Entry(row, font=("Segoe UI", 10), bg=ro_bg, fg="#2C2F33",
+                           relief="flat", readonlybackground=ro_bg)
+            ent.insert(0, value)
+            ent.config(state="readonly")
+            ent.pack(side="left", fill="x", expand=True, ipady=8)
+            if copy_label:
+                tk.Button(row, text="\U0001f4cb", command=lambda: _copy(value, copy_label),
+                          **copy_btn).pack(side="right", padx=(6, 0), ipady=4)
+            return row, ent
+
+        # SERVIÇO
+        tk.Label(dialog, text="SERVI\u00c7O", **lbl_style).pack(anchor="w", **pad)
+        _make_readonly(dialog, entry.site, "Serviço")
+
+        # UTILIZADOR / EMAIL
+        tk.Label(dialog, text="UTILIZADOR / EMAIL", **lbl_style).pack(anchor="w", **pad)
+        _make_readonly(dialog, entry.username, "Utilizador")
+
+        # PASSWORD
+        tk.Label(dialog, text="PASSWORD", **lbl_style).pack(anchor="w", **pad)
+        pw_row = tk.Frame(dialog, bg="white")
+        pw_row.pack(fill="x", **pad, pady=(4, 10))
+        ent_pw = tk.Entry(pw_row, show="\u25cf", font=("Segoe UI", 10), bg=ro_bg,
+                          fg="#2C2F33", relief="flat", readonlybackground=ro_bg)
+        ent_pw.insert(0, entry.password)
+        ent_pw.config(state="readonly")
+        ent_pw.pack(side="left", fill="x", expand=True, ipady=8)
+
+        _pw_visible = {"state": False}
+        def _toggle_pw():
+            _pw_visible["state"] = not _pw_visible["state"]
+            ent_pw.config(show="" if _pw_visible["state"] else "\u25cf")
+            _toggle_btn.config(text="\U0001f648" if _pw_visible["state"] else "\U0001f441\ufe0f")
+        _toggle_btn = tk.Button(pw_row, text="\U0001f441\ufe0f", command=_toggle_pw, **copy_btn)
+        _toggle_btn.pack(side="right", padx=(6, 0), ipady=4)
+        tk.Button(pw_row, text="\U0001f4cb", command=lambda: _copy(entry.password, "Password"),
+                  **copy_btn).pack(side="right", padx=(6, 0), ipady=4)
+
+        # NOTAS
+        tk.Label(dialog, text="NOTAS", **lbl_style).pack(anchor="w", **pad)
+        _make_readonly(dialog, entry.notes)
+
+        # FECHAR
+        btn_frame = tk.Frame(dialog, bg="white")
+        btn_frame.pack(fill="x", padx=24, pady=(4, 20))
+        tk.Button(btn_frame, text="FECHAR", command=dialog.destroy,
+                  bg="#2C2F33", fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", padx=20,
+                  activebackground="#2C2F33", activeforeground="white").pack(side="right", ipady=6)
+
+        self.wait_window(dialog)
 
     def _on_delete(self) -> None:
         entry_id = self._get_selected_id()
