@@ -328,8 +328,9 @@ class VaultPage(tk.Frame):
         self.tree.bind("<Button-1>", self._tree_on_click)
         self.tree.bind("<Double-1>", lambda _: self._on_edit())
 
-        # Tag para entradas inseguras (password fraca)
+        # Tag para entradas inseguras (password fraca) e repetidas
         self.tree.tag_configure("insecure", foreground=tc["danger"])
+        self.tree.tag_configure("duplicate", foreground="#e6a817")
 
         # Status bar
         self._status = tk.Label(
@@ -384,6 +385,11 @@ class VaultPage(tk.Frame):
         for item in self.tree.get_children():
             self.tree.delete(item)
 
+        # Detetar passwords repetidas (usadas em mais de 1 serviço)
+        from collections import Counter
+        pw_counts = Counter(e.password for e in self._entries_by_id.values())
+        duplicated_pws = {pw for pw, count in pw_counts.items() if count > 1}
+
         for entry in self._entries_by_id.values():
             haystack = f"{entry.site} {entry.username} {entry.notes}".lower()
             if query and query not in haystack:
@@ -393,7 +399,13 @@ class VaultPage(tk.Frame):
             pw_text = entry.password if show_pw else self.HIDDEN_PASSWORD
             action_text = "\U0001f648" if show_pw else "\U0001f441\ufe0f"
 
-            tags = ("insecure",) if self._is_weak_password(entry.password) else ()
+            # Prioridade: vermelho (fraca) > amarelo (repetida)
+            if self._is_weak_password(entry.password):
+                tags = ("insecure",)
+            elif entry.password in duplicated_pws:
+                tags = ("duplicate",)
+            else:
+                tags = ()
 
             self.tree.insert("", "end", iid=entry.id, values=(
                 entry.site, entry.username, pw_text, entry.notes, action_text,
