@@ -39,7 +39,6 @@ from src.ui.login_gui import LoginApp
 
 # Importar componentes do colega
 from gerador1.inicio import inicio
-from gerador1.gerenciador import gerenciador
 from gerador1.gerador import gerador
 from gerador1.verificador import verificador
 from gerador1.utilizador import utilizador
@@ -325,7 +324,6 @@ class Dashboard(tk.Frame):
         
         # Navegação principal
         self.criar_botao("\U0001f510  Vault", lambda: self._open_vault())
-        self.criar_botao("\U0001f4c1  Gerenciador", lambda: self.mudar_tela("Gerenciador"))
         self.criar_botao("\U0001f511  Gerador", lambda: self.mudar_tela("Gerador"))
         self.criar_botao("\U0001f50d  Verificador", lambda: self.mudar_tela("Verificador"))
         
@@ -372,8 +370,6 @@ class Dashboard(tk.Frame):
         page = None
         if nome_tela == "Inicio":
             page = inicio(self.main_container)
-        elif nome_tela == "Gerenciador":
-            page = gerenciador(self.main_container)
         elif nome_tela == "Gerador":
             page = gerador(self.main_container)
         elif nome_tela == "Verificador":

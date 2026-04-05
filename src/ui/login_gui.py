@@ -614,7 +614,7 @@ class LoginApp:
     def show_register_view(self):
         self.clear_window()
         self.current_view = "register"
-        self._center_window()
+        self._center_window(height=900)
 
         outer = tk.Frame(self.root, bg=_FORM_BG)
         outer.pack(fill="both", expand=True)
@@ -649,15 +649,15 @@ class LoginApp:
             canvas.itemconfigure(1, width=cw)
         canvas.bind("<Configure>", _center_scroll)
 
+        scrollbar.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
-        # scrollbar visível apenas se necessário
         canvas.bind("<Enter>", lambda _: canvas.bind_all("<MouseWheel>",
                     lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")))
         canvas.bind("<Leave>", lambda _: canvas.unbind_all("<MouseWheel>"))
 
         # Card
         card = tk.Frame(scroll_frame, bg=_FORM_BG)
-        card.pack(padx=48, pady=(40, 32))
+        card.pack(padx=48, pady=(28, 28))
 
         # ── Header ──
         tk.Label(card, text="Password Manager", font=(_FONT, 12), bg=_FORM_BG, fg=_BRAND_ACCENT).pack(anchor="w")
