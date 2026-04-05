@@ -47,7 +47,7 @@ from gerador1.politicas import politicas
 from src.ui.settings_page import SettingsPage, get_theme_colors, _load_prefs, apply_theme_recursive
 from src.ui.admin_panel import AdminPanel
 from src.models.local_auth import LocalAuth
-from src.ui.vault_gui import VaultWindow
+from src.ui.vault_gui import VaultPage
 
 
 class AppController:
@@ -323,7 +323,7 @@ class Dashboard(tk.Frame):
         self.logo.bind("<Button-1>", lambda e: self.mudar_tela("Inicio"))
         
         # Navegação principal
-        self.criar_botao("\U0001f510  Vault", lambda: self._open_vault())
+        self.criar_botao("\U0001f510  Vault", lambda: self.mudar_tela("Vault"))
         self.criar_botao("\U0001f511  Gerador", lambda: self.mudar_tela("Gerador"))
         self.criar_botao("\U0001f50d  Verificador", lambda: self.mudar_tela("Verificador"))
         
@@ -370,6 +370,12 @@ class Dashboard(tk.Frame):
         page = None
         if nome_tela == "Inicio":
             page = inicio(self.main_container)
+        elif nome_tela == "Vault":
+            page = VaultPage(
+                self.main_container,
+                local_auth=self.local_auth,
+                master_password=self._master_password,
+            )
         elif nome_tela == "Gerador":
             page = gerador(self.main_container)
         elif nome_tela == "Verificador":
@@ -393,21 +399,13 @@ class Dashboard(tk.Frame):
             page.pack(fill="both", expand=True)
             # Aplicar tema recursivamente a páginas do colega (gerador1)
             # que usam cores hardcoded — sem efeito no tema claro
-            if nome_tela not in ("Definições", "Admin"):
+            if nome_tela not in ("Definições", "Admin", "Vault"):
                 apply_theme_recursive(page, self.tc)
 
     def _on_theme_changed(self, new_theme: str) -> None:
         """Callback chamado pela SettingsPage quando o tema muda."""
         if self.on_rebuild:
             self.on_rebuild()
-
-    def _open_vault(self) -> None:
-        """Abre a janela do Vault encriptado."""
-        VaultWindow(
-            self,
-            local_auth=self.local_auth,
-            master_password=self._master_password,
-        )
 
     def criar_botao(self, texto: str, comando, vermelho: bool = False, destaque: bool = False) -> tk.Label:
         """Cria um botão no sidebar."""

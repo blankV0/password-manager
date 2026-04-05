@@ -1,5 +1,5 @@
 """
-Vault UI window — encrypted password vault with server sync.
+Vault UI — encrypted password vault embedded in the Dashboard.
 
 Phase 3 implementation: every entry is encrypted client-side with
 AES-256-GCM before being sent to the server.  The server stores only
@@ -17,13 +17,17 @@ import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
 from dataclasses import dataclass
-from typing import Callable, Optional, Any
+from typing import Optional
 
 from src.storage.vault_crypto import VaultCrypto, VaultCryptoError
 from src.models.local_auth import LocalAuth, AuthError
 
 logger = logging.getLogger(__name__)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Data model
+# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class VaultEntry:
@@ -35,6 +39,10 @@ class VaultEntry:
     created_at: int = 0
     updated_at: int = 0
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Vault service — crypto + sync
+# ─────────────────────────────────────────────────────────────────────────────
 
 class VaultService:
     """
@@ -52,18 +60,11 @@ class VaultService:
         self._is_ready = False
 
     def initialize(self) -> tuple[bool, str]:
-        """
-        Initialize the vault: setup or unlock, then sync entries.
-
-        Returns:
-            (success, message)
-        """
+        """Initialize the vault: setup or unlock, then sync entries."""
         try:
-            # Step 1: Check if vault key exists on server
             key_data = self.local_auth.vault_get_key()
 
             if key_data.get("exists"):
-                # Returning user — unlock with master password
                 self._crypto.unlock(
                     self._master_password,
                     key_data["kek_salt_b64"],
@@ -73,12 +74,10 @@ class VaultService:
                 )
                 logger.info("[VAULT] Existing vault unlocked")
             else:
-                # First-time setup — create new vault
                 setup_data = self._crypto.setup_new_vault(self._master_password)
                 self.local_auth.vault_setup_key(setup_data)
                 logger.info("[VAULT] New vault created and key stored on server")
 
-            # Step 2: Sync entries from server
             self._sync_from_server()
             self._is_ready = True
             return True, "Vault desbloqueado com sucesso."
@@ -126,29 +125,18 @@ class VaultService:
     def add_entry(self, site: str, username: str, password: str, notes: str) -> Optional[VaultEntry]:
         """Encrypt and push a new entry to the server."""
         try:
-            entry_data = {
-                "site": site,
-                "username": username,
-                "password": password,
-                "notes": notes,
-            }
+            entry_data = {"site": site, "username": username, "password": password, "notes": notes}
             ct_b64, nonce_b64, tag_b64 = self._crypto.encrypt_entry(entry_data)
 
             result = self.local_auth.vault_create_entry({
-                "encrypted_data_b64": ct_b64,
-                "nonce_b64": nonce_b64,
-                "tag_b64": tag_b64,
+                "encrypted_data_b64": ct_b64, "nonce_b64": nonce_b64, "tag_b64": tag_b64,
             })
 
-            entry_item = result.get("entry", {})
+            ei = result.get("entry", {})
             entry = VaultEntry(
-                id=entry_item.get("id", ""),
-                site=site,
-                username=username,
-                password=password,
-                notes=notes,
-                created_at=entry_item.get("created_at", 0),
-                updated_at=entry_item.get("updated_at", 0),
+                id=ei.get("id", ""), site=site, username=username,
+                password=password, notes=notes,
+                created_at=ei.get("created_at", 0), updated_at=ei.get("updated_at", 0),
             )
             self._entries.append(entry)
             logger.info("[VAULT] Entry added: %s", site)
@@ -158,36 +146,25 @@ class VaultService:
             logger.error("[VAULT] Failed to add entry: %s", exc)
             return None
 
-    def update_entry(
-        self, entry_id: str, site: str, username: str, password: str, notes: str,
-    ) -> bool:
+    def update_entry(self, entry_id: str, site: str, username: str, password: str, notes: str) -> bool:
         """Encrypt and push an updated entry to the server."""
         try:
-            entry_data = {
-                "site": site,
-                "username": username,
-                "password": password,
-                "notes": notes,
-            }
+            entry_data = {"site": site, "username": username, "password": password, "notes": notes}
             ct_b64, nonce_b64, tag_b64 = self._crypto.encrypt_entry(entry_data)
 
             self.local_auth.vault_update_entry(entry_id, {
-                "encrypted_data_b64": ct_b64,
-                "nonce_b64": nonce_b64,
-                "tag_b64": tag_b64,
+                "encrypted_data_b64": ct_b64, "nonce_b64": nonce_b64, "tag_b64": tag_b64,
             })
 
             for i, e in enumerate(self._entries):
                 if e.id == entry_id:
                     self._entries[i] = VaultEntry(
-                        entry_id, site, username, password, notes,
-                        e.created_at, e.updated_at,
+                        entry_id, site, username, password, notes, e.created_at, e.updated_at,
                     )
                     break
 
             logger.info("[VAULT] Entry updated: %s", site)
             return True
-
         except (VaultCryptoError, AuthError) as exc:
             logger.error("[VAULT] Failed to update entry: %s", exc)
             return False
@@ -218,183 +195,162 @@ class VaultService:
         logger.info("[VAULT] Vault locked — keys wiped from memory")
 
 
-class VaultWindow(tk.Toplevel):
-    """
-    Dark-themed vault window with encrypted storage.
+# ─────────────────────────────────────────────────────────────────────────────
+# VaultPage — inline page for the Dashboard
+# ─────────────────────────────────────────────────────────────────────────────
 
-    Requirements covered:
-    - Receives LocalAuth + master_password for encryption
-    - Treeview columns: Site, Username, Password(hidden), Notes, Actions
-    - Toolbar: Add/Edit/Delete/Copy Password/Refresh/Lock
+class VaultPage(tk.Frame):
+    """
+    Embedded vault page that fits inside the Dashboard main_container.
+
+    Same functionality as the old VaultWindow, but as a tk.Frame:
+    - Treeview with Site, Username, Password(hidden), Notes, Actions
+    - Toolbar: Add / Edit / Delete / Copy Password / Refresh
     - Real-time search filtering
     - Per-row reveal/hide toggle via Actions column click
-    - Auto-lock after 5 minutes inactivity
-    - All data encrypted client-side (AES-256-GCM)
+    - Clipboard auto-clear after 30s
     """
 
-    LOCK_TIMEOUT_MS = 5 * 60 * 1000
-    HIDDEN_PASSWORD = "••••••••"
+    HIDDEN_PASSWORD = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
 
     def __init__(
         self,
         master: tk.Misc,
         local_auth: LocalAuth,
         master_password: str,
-        on_lock: Callable[[], None] | None = None,
-        *,
-        access_token: str = "",
     ) -> None:
-        super().__init__(master)
-        self.on_lock = on_lock
+        super().__init__(master, bg="white")
+
+        self._local_auth = local_auth
+        self._master_password = master_password
         self._revealed_ids: set[str] = set()
-        self._lock_after_id: str | None = None
         self._entries_by_id: dict[str, VaultEntry] = {}
+        self._service: VaultService | None = None
 
-        self.title("Vault")
-        self.geometry("1000x620")
-        self.configure(bg="#1a1a2e")
-        self.minsize(860, 520)
-
-        self._setup_style()
         self._build_ui()
 
-        # Initialize encrypted vault service
-        self.service = VaultService(local_auth, master_password)
-        self._init_vault()
+        # Init in background so the frame renders first
+        self.after(50, self._init_vault)
 
-        self._bind_inactivity_events()
-        self._reset_lock_timer()
-        self.protocol("WM_DELETE_WINDOW", self._handle_lock)
-
-    def _init_vault(self) -> None:
-        """Initialize vault — unlock/setup and sync entries."""
-        success, message = self.service.initialize()
-        if not success:
-            messagebox.showerror("Vault Error", message, parent=self)
-            self.after(100, self.destroy)
-            return
-        self._load_entries()
-
-    def _setup_style(self) -> None:
-        style = ttk.Style(self)
-        try:
-            style.theme_use("clam")
-        except tk.TclError:
-            pass
-
-        style.configure("Vault.Treeview",
-                        background="#22243b",
-                        foreground="#f5f5f5",
-                        fieldbackground="#22243b",
-                        rowheight=32,
-                        bordercolor="#1a1a2e",
-                        borderwidth=0)
-        style.map("Vault.Treeview",
-                  background=[("selected", "#e94560")],
-                  foreground=[("selected", "#ffffff")])
-
-        style.configure("Vault.Treeview.Heading",
-                        background="#2d314f",
-                        foreground="#f5f5f5",
-                        relief="flat",
-                        font=("Segoe UI", 10, "bold"))
-        style.map("Vault.Treeview.Heading",
-                  background=[("active", "#3a4066")])
-
-        style.configure("Vault.TButton",
-                        background="#e94560",
-                        foreground="#ffffff",
-                        borderwidth=0,
-                        focusthickness=0,
-                        focuscolor="#e94560",
-                        padding=(10, 6))
-        style.map("Vault.TButton",
-                  background=[("active", "#ff5d78")])
+    # ── Build ────────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self.container = tk.Frame(self, bg="#1a1a2e")
-        self.container.pack(fill="both", expand=True, padx=16, pady=16)
+        # Badge
+        badge = tk.Label(
+            self, text="AES-256-GCM  \u2022  Zero-Knowledge  \u2022  Encriptado ponto-a-ponto",
+            font=("Segoe UI", 9), bg="white", fg="#6c63ff",
+        )
+        badge.pack(anchor="w", pady=(0, 12))
 
-        title_row = tk.Frame(self.container, bg="#1a1a2e")
-        title_row.pack(fill="x", pady=(0, 12))
-
-        tk.Label(title_row, text="🔐 Password Vault",
-                 bg="#1a1a2e", fg="#ffffff",
-                 font=("Segoe UI", 18, "bold")).pack(side="left")
-
-        tk.Label(title_row, text="AES-256-GCM • Zero-Knowledge",
-                 bg="#1a1a2e", fg="#6c63ff",
-                 font=("Segoe UI", 9)).pack(side="left", padx=(12, 0), pady=(6, 0))
-
-        self._build_toolbar()
-        self._build_search()
-        self._build_table()
-
-    def _build_toolbar(self) -> None:
-        toolbar = tk.Frame(self.container, bg="#1a1a2e")
+        # Toolbar
+        toolbar = tk.Frame(self, bg="white")
         toolbar.pack(fill="x", pady=(0, 10))
 
-        ttk.Button(toolbar, text="Add Entry", style="Vault.TButton",
-                   command=self._on_add).pack(side="left", padx=(0, 8))
-        ttk.Button(toolbar, text="Edit Entry", style="Vault.TButton",
-                   command=self._on_edit).pack(side="left", padx=(0, 8))
-        ttk.Button(toolbar, text="Delete Entry", style="Vault.TButton",
-                   command=self._on_delete).pack(side="left", padx=(0, 8))
-        ttk.Button(toolbar, text="Copy Password", style="Vault.TButton",
-                   command=self._on_copy_password).pack(side="left", padx=(0, 8))
-        ttk.Button(toolbar, text="🔄 Refresh", style="Vault.TButton",
-                   command=self._on_refresh).pack(side="left", padx=(0, 8))
+        btn_dark = {"bg": "#2C2F33", "fg": "white", "font": ("Segoe UI", 9, "bold"),
+                    "relief": "flat", "cursor": "hand2", "padx": 14}
+        btn_light = {"bg": "#E9ECEF", "fg": "#2C2F33", "font": ("Segoe UI", 9, "bold"),
+                     "relief": "flat", "cursor": "hand2", "padx": 14}
 
-        ttk.Button(toolbar, text="Lock (logout)", style="Vault.TButton",
-                   command=self._handle_lock).pack(side="right")
+        tk.Button(toolbar, text="ADICIONAR", command=self._on_add, **btn_dark).pack(side="left", ipady=8)
+        tk.Button(toolbar, text="EDITAR", command=self._on_edit, **btn_dark).pack(side="left", padx=8, ipady=8)
+        tk.Button(toolbar, text="COPIAR PASS", command=self._on_copy_password, **btn_light).pack(side="left", ipady=8)
+        tk.Button(toolbar, text="APAGAR", command=self._on_delete, **btn_light).pack(side="left", padx=8, ipady=8)
+        tk.Button(toolbar, text="ATUALIZAR", command=self._on_refresh, **btn_light).pack(side="left", ipady=8)
 
-    def _build_search(self) -> None:
-        row = tk.Frame(self.container, bg="#1a1a2e")
-        row.pack(fill="x", pady=(0, 10))
+        # Search
+        search_row = tk.Frame(self, bg="white")
+        search_row.pack(fill="x", pady=(0, 10))
 
-        tk.Label(row, text="Search:", bg="#1a1a2e", fg="#c7c9d9",
-                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 8))
+        tk.Label(search_row, text="Pesquisar:", font=("Segoe UI", 10),
+                 bg="white", fg="#666").pack(side="left", padx=(0, 8))
 
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *_: self._apply_filter())
 
-        tk.Entry(row, textvariable=self.search_var,
-                 bg="#22243b", fg="#f5f5f5",
-                 insertbackground="#f5f5f5", relief="flat",
-                 font=("Segoe UI", 10)).pack(side="left", fill="x", expand=True)
+        search_entry = tk.Entry(
+            search_row, textvariable=self.search_var,
+            font=("Segoe UI", 10), bg="#F8F9FA", fg="#444",
+            insertbackground="#444", relief="flat",
+            highlightthickness=1, highlightbackground="#E9ECEF",
+            highlightcolor="#6c63ff",
+        )
+        search_entry.pack(side="left", fill="x", expand=True, ipady=6)
 
-    def _build_table(self) -> None:
-        table_frame = tk.Frame(self.container, bg="#1a1a2e")
+        # Table
+        table_frame = tk.Frame(self, bg="white", highlightthickness=1, highlightbackground="#E9ECEF")
         table_frame.pack(fill="both", expand=True)
 
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Vault.Treeview",
+                        background="#FFFFFF", foreground="#444",
+                        fieldbackground="#FFFFFF", rowheight=38,
+                        font=("Segoe UI", 10))
+        style.configure("Vault.Treeview.Heading",
+                        font=("Segoe UI", 8, "bold"), background="#F8F9FA",
+                        foreground="#999", relief="flat")
+        style.map("Vault.Treeview",
+                  background=[("selected", "#6c63ff")],
+                  foreground=[("selected", "#ffffff")])
+
         columns = ("site", "username", "password", "notes", "actions")
-        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings",
-                                 style="Vault.Treeview", selectmode="browse")
+        self.tree = ttk.Treeview(
+            table_frame, columns=columns, show="headings",
+            style="Vault.Treeview", selectmode="browse",
+        )
 
-        self.tree.heading("site", text="Site")
-        self.tree.heading("username", text="Username")
-        self.tree.heading("password", text="Password")
-        self.tree.heading("notes", text="Notes")
-        self.tree.heading("actions", text="Actions")
+        self.tree.heading("site", text="  SERVI\u00c7O")
+        self.tree.heading("username", text="  UTILIZADOR / EMAIL")
+        self.tree.heading("password", text="  PASSWORD")
+        self.tree.heading("notes", text="  NOTAS")
+        self.tree.heading("actions", text="  A\u00c7\u00c3O")
 
-        self.tree.column("site", width=180, anchor="w")
-        self.tree.column("username", width=180, anchor="w")
-        self.tree.column("password", width=140, anchor="center")
-        self.tree.column("notes", width=320, anchor="w")
-        self.tree.column("actions", width=120, anchor="center")
+        self.tree.column("site", width=160, anchor="w")
+        self.tree.column("username", width=200, anchor="w")
+        self.tree.column("password", width=120, anchor="center")
+        self.tree.column("notes", width=220, anchor="w")
+        self.tree.column("actions", width=80, anchor="center")
 
-        yscroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=yscroll.set)
+        scroll = tk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scroll.set)
 
         self.tree.pack(side="left", fill="both", expand=True)
-        yscroll.pack(side="right", fill="y")
+        scroll.pack(side="right", fill="y")
 
-        self.tree.bind("<Double-1>", self._tree_on_double_click)
         self.tree.bind("<Button-1>", self._tree_on_click)
+        self.tree.bind("<Double-1>", lambda _: self._on_edit())
+
+        # Status bar
+        self._status = tk.Label(
+            self, text="A inicializar o vault\u2026", font=("Segoe UI", 9),
+            bg="white", fg="#999", anchor="w",
+        )
+        self._status.pack(fill="x", pady=(8, 0))
+
+    # ── Init ─────────────────────────────────────────────────────────────────
+
+    def _init_vault(self) -> None:
+        """Initialize vault — unlock/setup and sync entries."""
+        self._service = VaultService(self._local_auth, self._master_password)
+        success, message = self._service.initialize()
+        if not success:
+            self._status.config(text=f"Erro: {message}", fg="#e74c3c")
+            messagebox.showerror("Vault", message)
+            return
+        self._load_entries()
+        count = len(self._entries_by_id)
+        self._status.config(
+            text=f"{count} {'entrada' if count == 1 else 'entradas'} \u2022 Encriptado \u2022 Sincronizado",
+            fg="#22c55e",
+        )
+
+    # ── Data ─────────────────────────────────────────────────────────────────
 
     def _load_entries(self) -> None:
-        entries = self.service.list_entries()
-        self._entries_by_id = {entry.id: entry for entry in entries}
+        if not self._service:
+            return
+        entries = self._service.list_entries()
+        self._entries_by_id = {e.id: e for e in entries}
         self._apply_filter()
 
     def _apply_filter(self) -> None:
@@ -408,17 +364,19 @@ class VaultWindow(tk.Toplevel):
             if query and query not in haystack:
                 continue
 
-            show_password = entry.id in self._revealed_ids
-            password_text = entry.password if show_password else self.HIDDEN_PASSWORD
-            action_text = "Hide" if show_password else "Reveal"
+            show_pw = entry.id in self._revealed_ids
+            pw_text = entry.password if show_pw else self.HIDDEN_PASSWORD
+            action_text = "Ocultar" if show_pw else "Mostrar"
 
             self.tree.insert("", "end", iid=entry.id, values=(
-                entry.site, entry.username, password_text, entry.notes, action_text,
+                entry.site, entry.username, pw_text, entry.notes, action_text,
             ))
 
     def _get_selected_id(self) -> str | None:
-        selected = self.tree.selection()
-        return selected[0] if selected else None
+        sel = self.tree.selection()
+        return sel[0] if sel else None
+
+    # ── Tree events ──────────────────────────────────────────────────────────
 
     def _tree_on_click(self, event: tk.Event) -> None:
         region = self.tree.identify("region", event.x, event.y)
@@ -432,96 +390,101 @@ class VaultWindow(tk.Toplevel):
                 self._revealed_ids.add(row)
             self._apply_filter()
 
-    def _tree_on_double_click(self, _event: tk.Event) -> None:
-        self._on_edit()
+    # ── Entry dialog (Toplevel) ──────────────────────────────────────────────
 
     def _show_entry_dialog(
         self, title: str, initial: VaultEntry | None = None,
     ) -> tuple[str, str, str, str] | None:
         dialog = tk.Toplevel(self)
         dialog.title(title)
-        dialog.geometry("420x320")
-        dialog.configure(bg="#1a1a2e")
-        dialog.transient(self)
+        dialog.geometry("420x360")
+        dialog.configure(bg="white")
+        dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
+        dialog.resizable(False, False)
 
-        fields = {
-            "Site": tk.StringVar(value=initial.site if initial else ""),
-            "Username": tk.StringVar(value=initial.username if initial else ""),
-            "Password": tk.StringVar(value=initial.password if initial else ""),
-            "Notes": tk.StringVar(value=initial.notes if initial else ""),
-        }
+        # Centre on screen
+        dialog.update_idletasks()
+        sx = dialog.winfo_screenwidth()
+        sy = dialog.winfo_screenheight()
+        dialog.geometry(f"+{(sx - 420) // 2}+{(sy - 360) // 2}")
 
-        row = 0
-        for label, var in fields.items():
-            tk.Label(dialog, text=label, bg="#1a1a2e", fg="#ffffff",
-                     font=("Segoe UI", 10)).grid(
-                row=row, column=0, sticky="w", padx=16,
-                pady=(14 if row == 0 else 8, 2),
-            )
-            show = "*" if label == "Password" else ""
-            tk.Entry(dialog, textvariable=var, show=show,
-                     bg="#22243b", fg="#f5f5f5",
-                     insertbackground="#f5f5f5", relief="flat").grid(
-                row=row + 1, column=0, sticky="ew", padx=16, pady=(0, 4),
-            )
-            row += 2
+        pad = {"padx": 24}
+        lbl_style = {"font": ("Segoe UI", 8, "bold"), "bg": "white", "fg": "#999"}
+        ent_style = {"font": ("Segoe UI", 10), "bg": "#F8F9FA", "relief": "flat"}
 
-        dialog.grid_columnconfigure(0, weight=1)
+        tk.Label(dialog, text=title, font=("Segoe UI", 14, "bold"),
+                 bg="white", fg="#2C2F33").pack(anchor="w", **pad, pady=(20, 16))
+
+        fields: dict[str, tk.Entry] = {}
+        for label_text, key, show in [
+            ("SERVI\u00c7O", "site", ""),
+            ("UTILIZADOR / EMAIL", "username", ""),
+            ("PASSWORD", "password", "\u25cf"),
+            ("NOTAS", "notes", ""),
+        ]:
+            tk.Label(dialog, text=label_text, **lbl_style).pack(anchor="w", **pad)
+            ent = tk.Entry(dialog, show=show, **ent_style)
+            ent.pack(fill="x", **pad, pady=(4, 10), ipady=8)
+            if initial:
+                ent.insert(0, getattr(initial, key, ""))
+            fields[key] = ent
 
         result: dict[str, tuple[str, str, str, str] | None] = {"value": None}
 
         def save() -> None:
-            site = fields["Site"].get().strip()
-            username = fields["Username"].get().strip()
-            password = fields["Password"].get().strip()
-            notes = fields["Notes"].get().strip()
+            site = fields["site"].get().strip()
+            username = fields["username"].get().strip()
+            password = fields["password"].get().strip()
+            notes = fields["notes"].get().strip()
             if not site or not username or not password:
-                messagebox.showwarning(
-                    "Validation",
-                    "Site, Username and Password are required.",
-                    parent=dialog,
-                )
+                messagebox.showwarning("Aviso",
+                    "Servi\u00e7o, utilizador e password s\u00e3o obrigat\u00f3rios.", parent=dialog)
                 return
             result["value"] = (site, username, password, notes)
             dialog.destroy()
 
-        btns = tk.Frame(dialog, bg="#1a1a2e")
-        btns.grid(row=row + 1, column=0, sticky="e", padx=16, pady=14)
+        btn_frame = tk.Frame(dialog, bg="white")
+        btn_frame.pack(fill="x", padx=24, pady=(4, 20))
 
-        tk.Button(btns, text="Cancel", command=dialog.destroy,
-                  bg="#2d314f", fg="#ffffff", relief="flat").pack(side="right", padx=(8, 0))
-        tk.Button(btns, text="Save", command=save,
-                  bg="#e94560", fg="#ffffff", relief="flat").pack(side="right")
+        tk.Button(btn_frame, text="GUARDAR", command=save,
+                  bg="#2C2F33", fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", padx=20).pack(side="right", ipady=6)
+        tk.Button(btn_frame, text="CANCELAR", command=dialog.destroy,
+                  bg="#E9ECEF", fg="#2C2F33", font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", padx=16).pack(side="right", padx=(0, 8), ipady=6)
 
         self.wait_window(dialog)
         return result["value"]
 
+    # ── Actions ──────────────────────────────────────────────────────────────
+
     def _on_add(self) -> None:
-        payload = self._show_entry_dialog("Add Entry")
-        if not payload:
+        payload = self._show_entry_dialog("Nova Credencial")
+        if not payload or not self._service:
             return
         site, username, password, notes = payload
-        entry = self.service.add_entry(site, username, password, notes)
+        entry = self._service.add_entry(site, username, password, notes)
         if entry:
             self._entries_by_id[entry.id] = entry
             self._apply_filter()
+            self._update_status()
         else:
-            messagebox.showerror("Error", "Failed to save entry.", parent=self)
+            messagebox.showerror("Erro", "Falha ao guardar a entrada.")
 
     def _on_edit(self) -> None:
         entry_id = self._get_selected_id()
-        if entry_id is None:
-            messagebox.showinfo("Edit Entry", "Select an entry first.", parent=self)
+        if not entry_id:
+            messagebox.showinfo("Editar", "Selecione uma entrada primeiro.")
             return
         current = self._entries_by_id.get(entry_id)
-        if not current:
+        if not current or not self._service:
             return
-        payload = self._show_entry_dialog("Edit Entry", initial=current)
+        payload = self._show_entry_dialog("Editar Credencial", initial=current)
         if not payload:
             return
         site, username, password, notes = payload
-        ok = self.service.update_entry(entry_id, site, username, password, notes)
+        ok = self._service.update_entry(entry_id, site, username, password, notes)
         if ok:
             self._entries_by_id[entry_id] = VaultEntry(
                 entry_id, site, username, password, notes,
@@ -529,44 +492,38 @@ class VaultWindow(tk.Toplevel):
             )
             self._apply_filter()
         else:
-            messagebox.showerror("Error", "Failed to update entry.", parent=self)
+            messagebox.showerror("Erro", "Falha ao atualizar a entrada.")
 
     def _on_delete(self) -> None:
         entry_id = self._get_selected_id()
-        if entry_id is None:
-            messagebox.showinfo("Delete Entry", "Select an entry first.", parent=self)
+        if not entry_id:
+            messagebox.showinfo("Apagar", "Selecione uma entrada primeiro.")
             return
-        if not messagebox.askyesno("Delete Entry", "Delete selected entry?", parent=self):
+        if not messagebox.askyesno("Apagar", "Deseja apagar esta entrada permanentemente?"):
             return
-        ok = self.service.delete_entry(entry_id)
-        if ok:
+        if self._service and self._service.delete_entry(entry_id):
             self._entries_by_id.pop(entry_id, None)
             self._revealed_ids.discard(entry_id)
             self._apply_filter()
+            self._update_status()
         else:
-            messagebox.showerror("Error", "Failed to delete entry.", parent=self)
+            messagebox.showerror("Erro", "Falha ao apagar a entrada.")
 
     def _on_copy_password(self) -> None:
         entry_id = self._get_selected_id()
-        if entry_id is None:
-            messagebox.showinfo("Copy Password", "Select an entry first.", parent=self)
+        if not entry_id:
+            messagebox.showinfo("Copiar", "Selecione uma entrada primeiro.")
             return
-        password = self.service.get_password(entry_id)
-        if not password:
-            messagebox.showwarning("Copy Password", "Could not get password.", parent=self)
+        pw = self._service.get_password(entry_id) if self._service else None
+        if not pw:
             return
         self.clipboard_clear()
-        self.clipboard_append(password)
+        self.clipboard_append(pw)
         self.update_idletasks()
         self.after(30_000, self._clear_clipboard)
-        messagebox.showinfo(
-            "Copy Password",
-            "Password copiada!\nClipboard será limpo em 30s.",
-            parent=self,
-        )
+        self._status.config(text="Password copiada! Clipboard limpo em 30s.", fg="#6c63ff")
 
     def _clear_clipboard(self) -> None:
-        """Security: clear clipboard after timeout."""
         try:
             self.clipboard_clear()
             self.clipboard_append("")
@@ -574,45 +531,28 @@ class VaultWindow(tk.Toplevel):
             pass
 
     def _on_refresh(self) -> None:
-        """Re-sync entries from server."""
+        if not self._service:
+            return
         try:
-            self.service._sync_from_server()
+            self._service._sync_from_server()
             self._load_entries()
-            messagebox.showinfo("Refresh", "Vault sincronizado com sucesso.", parent=self)
+            self._update_status()
+            self._status.config(text="Vault sincronizado com sucesso.", fg="#22c55e")
         except Exception as exc:
-            messagebox.showerror("Refresh", f"Erro ao sincronizar: {exc}", parent=self)
+            messagebox.showerror("Refresh", f"Erro ao sincronizar: {exc}")
 
-    def _bind_inactivity_events(self) -> None:
-        for sequence in ("<Any-KeyPress>", "<Any-Button>", "<Motion>"):
-            self.bind_all(sequence, self._on_activity, add="+")
+    def _update_status(self) -> None:
+        count = len(self._entries_by_id)
+        self._status.config(
+            text=f"{count} {'entrada' if count == 1 else 'entradas'} \u2022 Encriptado \u2022 Sincronizado",
+            fg="#22c55e",
+        )
 
-    def _on_activity(self, _event: tk.Event | None = None) -> None:
-        self._reset_lock_timer()
+    # ── Cleanup ──────────────────────────────────────────────────────────────
 
-    def _reset_lock_timer(self) -> None:
-        if self._lock_after_id is not None:
-            self.after_cancel(self._lock_after_id)
-        self._lock_after_id = self.after(self.LOCK_TIMEOUT_MS, self._handle_lock)
-
-    def _handle_lock(self) -> None:
-        if self._lock_after_id is not None:
-            try:
-                self.after_cancel(self._lock_after_id)
-            except Exception:
-                pass
-            self._lock_after_id = None
-
-        for sequence in ("<Any-KeyPress>", "<Any-Button>", "<Motion>"):
-            self.unbind_all(sequence)
-
-        # Wipe encryption keys from memory
-        if hasattr(self, "service"):
-            self.service.lock()
-
-        if callable(self.on_lock):
-            try:
-                self.on_lock()
-            except Exception:
-                pass
-
-        self.destroy()
+    def destroy(self) -> None:
+        """Override destroy to wipe crypto keys from memory."""
+        if self._service:
+            self._service.lock()
+            self._service = None
+        super().destroy()
