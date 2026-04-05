@@ -17,8 +17,8 @@ APP_ROOT = Path(__file__).resolve().parent.parent.parent
 def _load_dotenv(dotenv_path: Path) -> None:
     """Carrega variáveis do ficheiro .env para os.environ (se existir).
 
-    Não sobrescreve variáveis já definidas no ambiente — env vars
-    do sistema têm sempre prioridade sobre o ficheiro .env.
+    O ficheiro .env tem PRIORIDADE sobre variáveis de ambiente do sistema,
+    garantindo que a configuração da aplicação é sempre a do projeto.
     """
     if not dotenv_path.exists():
         return
@@ -32,7 +32,7 @@ def _load_dotenv(dotenv_path: Path) -> None:
             key, value = line.split("=", 1)
             key = key.strip()
             value = value.strip().strip("\"").strip("'")
-            if key and key not in os.environ:
+            if key and value:
                 os.environ[key] = value
     except Exception:
         pass

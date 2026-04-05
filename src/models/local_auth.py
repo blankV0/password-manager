@@ -243,7 +243,7 @@ class LocalAuth:
                 if self.refresh_token and self._refresh_session():
                     return self._api_post(path, payload)
 
-            message = data.get("message") or f"HTTP {response.status_code}"
+            message = data.get("message") or data.get("detail") or f"HTTP {response.status_code}"
             safe_email = None
             if isinstance(payload, dict) and "email" in payload:
                 safe_email = SecurityValidator.mask_email(str(payload.get("email")))

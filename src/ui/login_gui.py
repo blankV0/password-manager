@@ -1217,12 +1217,23 @@ class LoginApp:
                 self.show_phone_verification_view(email, phone_number, user_name)
             else:
                 logging.warning("[AVISO] Registo falhou para: %s - %s", SecurityValidator.mask_email(email), message)
-                # Traduzir mensagem genérica do servidor
-                if "could not be completed" in (message or "").lower():
+                # Traduzir mensagens do servidor para português
+                msg_lower = (message or "").lower()
+                if "could not be completed" in msg_lower or "already" in msg_lower:
                     message = (
                         "Não foi possível completar o registo.\n\n"
                         "O email ou username já podem estar em uso.\n"
                         "Tente com dados diferentes."
+                    )
+                elif "weak" in msg_lower or "common pattern" in msg_lower:
+                    message = (
+                        "A password contém um padrão fraco ou comum.\n\n"
+                        "Use uma password mais forte e única."
+                    )
+                elif msg_lower.startswith("http "):
+                    message = (
+                        "Não foi possível completar o registo.\n"
+                        "Verifique os dados e tente novamente."
                     )
                 messagebox.showerror("Erro", message)
 
