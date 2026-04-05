@@ -260,6 +260,39 @@ class LocalAuth:
             logging.error("[ERRO] Falha de ligação à API %s: %s", path, str(e))
             return False, f"Erro de ligação à API: {str(e)}", None
 
+    def _api_get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[bool, str, Optional[dict]]:
+        """GET request to the auth API."""
+        if self.disabled:
+            return False, "API não configurada.", None
+        try:
+            response = self.session.get(
+                self._api_url(path),
+                params=params,
+                headers=self._headers(),
+                timeout=API_TIMEOUT,
+                verify=self._get_verify(),
+            )
+            data: Dict[str, Any] = {}
+            if response.content:
+                try:
+                    data = response.json()
+                except ValueError:
+                    data = {}
+            data.setdefault("_status", response.status_code)
+
+            if response.ok:
+                return True, data.get("message", "OK"), data
+
+            if response.status_code == 401 and self.refresh_token and self._refresh_session():
+                return self._api_get(path, params)
+
+            message = data.get("message") or f"HTTP {response.status_code}"
+            logging.error("[ERRO] API GET %s falhou (%s)", path, response.status_code)
+            return False, message, data
+        except RequestException as e:
+            logging.error("[ERRO] Falha de ligação à API GET %s: %s", path, str(e))
+            return False, f"Erro de ligação à API: {str(e)}", None
+
     def _refresh_session(self) -> bool:
         if not self.refresh_token:
             return False
@@ -553,7 +586,7 @@ class LocalAuth:
 
     def verify_email(self, email: str) -> Tuple[bool, str]:
         """
-        Marca email como verificado.
+        Marca email como verificado (legacy).
 
         Args:
             email: Email do utilizador
@@ -570,6 +603,44 @@ class LocalAuth:
             logging.warning("[AVISO] Verificação de email não suportada pela API.")
             return True, "Email verificado (modo cloud)."
         return True, message
+
+    def check_email_verified(self, email: str) -> bool:
+        """
+        Verifica se o email do utilizador já foi confirmado.
+
+        Args:
+            email: Email do utilizador
+
+        Returns:
+            True se verificado, False caso contrário
+        """
+        email = (email or "").strip()
+        success, _, data = self._api_get(
+            "/check-verified",
+            {"email": email},
+        )
+        if success and isinstance(data, dict):
+            return data.get("verified", False)
+        return False
+
+    def resend_verification_email(self, email: str) -> Tuple[bool, str]:
+        """
+        Reenvia o email de verificação.
+
+        Args:
+            email: Email do utilizador
+
+        Returns:
+            (success: bool, message: str)
+        """
+        email = (email or "").strip()
+        success, message, _ = self._api_post(
+            "/resend-verification",
+            {"email": email},
+        )
+        if not success:
+            return False, message or "Erro ao reenviar email."
+        return True, message or "Email de verificação reenviado."
 
     def get_phone_number(self, email: str) -> Tuple[Optional[str], bool, str]:
         """

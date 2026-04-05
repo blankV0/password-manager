@@ -827,17 +827,9 @@ class LoginApp:
             success, message = SMSVerification.verify_sms_code(phone_number, code)
             if success:
                 verify_success, verify_message = self.local_auth.verify_phone(email)
-                email_success, email_message = EmailVerification.send_confirmation_email(email, user_name)
-                info_lines = ["Telemóvel confirmado com sucesso!"]
-                if verify_success and verify_message:
-                    info_lines.append(verify_message)
-                if email_success:
-                    info_lines.append("Email informativo enviado.")
-                else:
-                    info_lines.append(f"Email não enviado: {email_message}")
-                messagebox.showinfo("Sucesso", "\n".join(info_lines))
                 logging.info("[OK] Telemóvel verificado para: %s", email)
-                self.show_login_view()
+                # Seguir para verificação de email
+                self.show_email_verification_view(email, user_name)
             else:
                 messagebox.showerror("Erro", message)
                 logging.warning("[AVISO] Verificação SMS falhou para %s", email)
@@ -860,6 +852,159 @@ class LoginApp:
         back_link = tk.Label(card, text="← Voltar ao login", font=(_FONT, 10), bg=_FORM_BG, fg=_FORM_MUTED, cursor="hand2")
         back_link.pack(pady=(8, 0))
         back_link.bind("<Button-1>", lambda e: self.show_login_view())
+
+        _fade_in(card)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # VIEW — Email Verification (shown after SMS verification)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def show_email_verification_view(self, email: str, user_name: str):
+        """Ecrã de verificação de email — polls o servidor até o utilizador clicar no link."""
+        self.clear_window()
+        self._center_window()
+
+        self._email_poll_active = True  # flag to stop polling
+
+        outer = tk.Frame(self.root, bg=_FORM_BG)
+        outer.pack(fill="both", expand=True)
+
+        _bar, _bar_left = _build_titlebar(outer, self)
+
+        body = tk.Frame(outer, bg=_FORM_BG)
+        body.pack(fill="both", expand=True)
+
+        left_panel = _build_brand_panel(body)
+        left_panel.place(relx=0, rely=0, relwidth=_LEFT_RATIO, relheight=1)
+
+        def _sync_left(_e=None):
+            _bar_left.config(width=int(body.winfo_width() * _LEFT_RATIO))
+        body.bind("<Configure>", _sync_left)
+
+        right_panel = tk.Frame(body, bg=_FORM_BG)
+        right_panel.place(relx=_LEFT_RATIO, rely=0, relwidth=1 - _LEFT_RATIO, relheight=1)
+
+        card = tk.Frame(right_panel, bg=_FORM_BG)
+        card.place(relx=0.5, rely=0.5, anchor="center")
+
+        # ── Header ──
+        tk.Label(card, text="✉️", font=(_FONT, 36), bg=_FORM_BG).pack(pady=(0, 8))
+        tk.Label(
+            card, text="Verifique o seu Email",
+            font=(_FONT, 24, "bold"), bg=_FORM_BG, fg=_FORM_TEXT,
+        ).pack(pady=(0, 6))
+
+        # Mask email for display  (ex: t***e@pmanager.pt)
+        masked = SecurityValidator.mask_email(email) if hasattr(SecurityValidator, "mask_email") else email
+        tk.Label(
+            card,
+            text=f"Enviámos um email de verificação para\n{masked}\nClique no link no email para confirmar a sua conta.",
+            font=(_FONT, 10), bg=_FORM_BG, fg=_FORM_MUTED, justify="center",
+            wraplength=340,
+        ).pack(pady=(0, 24))
+
+        # ── Status label (updates during polling) ──
+        status_var = tk.StringVar(value="A aguardar confirmação…")
+        status_lbl = tk.Label(
+            card, textvariable=status_var,
+            font=(_FONT, 10), bg=_FORM_BG, fg=_BRAND_ACCENT,
+        )
+        status_lbl.pack(pady=(0, 18))
+
+        # ── Spinner dots animation ──
+        dots_var = tk.StringVar(value="●○○")
+        dots_lbl = tk.Label(
+            card, textvariable=dots_var,
+            font=(_FONT, 16), bg=_FORM_BG, fg=_BRAND_ACCENT,
+        )
+        dots_lbl.pack(pady=(0, 18))
+        _dot_frames = ["●○○", "○●○", "○○●", "○●○"]
+        _dot_idx = [0]
+
+        def _animate_dots():
+            if not self._email_poll_active:
+                return
+            _dot_idx[0] = (_dot_idx[0] + 1) % len(_dot_frames)
+            try:
+                dots_var.set(_dot_frames[_dot_idx[0]])
+                self.root.after(400, _animate_dots)
+            except tk.TclError:
+                pass
+        self.root.after(400, _animate_dots)
+
+        # ── "Já verifiquei" manual check button ──
+        def _manual_check():
+            verified = self.local_auth.check_email_verified(email)
+            if verified:
+                self._email_poll_active = False
+                status_var.set("✅ Email verificado com sucesso!")
+                dots_var.set("")
+                messagebox.showinfo(
+                    "Sucesso",
+                    "O seu email foi verificado!\nJá pode fazer login.",
+                )
+                logging.info("[OK] Email verificado para: %s", email)
+                self.show_login_view()
+            else:
+                status_var.set("Ainda não confirmado. Verifique o seu email.")
+
+        check_btn = _ActionButton(card, text="Já verifiquei ✓", command=_manual_check)
+        check_btn.pack(fill="x", pady=(0, 8))
+
+        # ── Resend link ──
+        def _resend_email():
+            success, msg = self.local_auth.resend_verification_email(email)
+            if success:
+                status_var.set("📨 Email reenviado!")
+                messagebox.showinfo("Sucesso", "Email de verificação reenviado com sucesso!")
+            else:
+                messagebox.showerror("Erro", msg)
+
+        resend_link = tk.Label(
+            card, text="Reenviar email de verificação",
+            font=(_FONT, 10), bg=_FORM_BG, fg=_BRAND_ACCENT, cursor="hand2",
+        )
+        resend_link.pack(pady=(4, 0))
+        resend_link.bind("<Enter>", lambda e: resend_link.config(font=(_FONT, 10, "underline")))
+        resend_link.bind("<Leave>", lambda e: resend_link.config(font=(_FONT, 10)))
+        resend_link.bind("<Button-1>", lambda e: _resend_email())
+
+        # ── Back to login ──
+        back_link = tk.Label(
+            card, text="← Voltar ao login",
+            font=(_FONT, 10), bg=_FORM_BG, fg=_FORM_MUTED, cursor="hand2",
+        )
+        back_link.pack(pady=(8, 0))
+        back_link.bind("<Button-1>", lambda e: _go_login())
+
+        def _go_login():
+            self._email_poll_active = False
+            self.show_login_view()
+
+        # ── Auto-poll every 5 seconds ──
+        def _poll():
+            if not self._email_poll_active:
+                return
+            try:
+                verified = self.local_auth.check_email_verified(email)
+                if verified:
+                    self._email_poll_active = False
+                    status_var.set("✅ Email verificado com sucesso!")
+                    dots_var.set("")
+                    messagebox.showinfo(
+                        "Sucesso",
+                        "O seu email foi verificado!\nJá pode fazer login.",
+                    )
+                    logging.info("[OK] Email verificado (auto-poll) para: %s", email)
+                    self.show_login_view()
+                    return
+            except Exception:
+                pass
+            if self._email_poll_active:
+                self.root.after(5000, _poll)
+
+        # Start polling after 3s to give user time to read
+        self.root.after(3000, _poll)
 
         _fade_in(card)
 
@@ -902,6 +1047,13 @@ class LoginApp:
                         logging.info("[OK] Login bem-sucedido para: %s", SecurityValidator.mask_email(login_input))
                         access_token = tokens.get("access_token")
                         self.current_email = login_input
+
+                        # ── Verificar se email está confirmado ──
+                        if not self.local_auth.check_email_verified(login_input):
+                            logging.info("[INFO] Email não verificado, a mostrar ecrã de verificação")
+                            self.root.after(0, lambda: self.show_email_verification_view(login_input, ""))
+                            return
+
                         # Guardar password temporariamente para derivação KEK do vault
                         self._vault_master_password = password
                         if self.on_login_success and access_token:
@@ -921,6 +1073,13 @@ class LoginApp:
                         self.session_started_at = datetime.now()
                         logging.info("[OK] Login bem-sucedido por telemóvel: %s", SecurityValidator.mask_phone(login_input))
                         self.current_email = email
+
+                        # ── Verificar se email está confirmado ──
+                        if not self.local_auth.check_email_verified(email):
+                            logging.info("[INFO] Email não verificado (login por telemóvel)")
+                            self.root.after(0, lambda e=email: self.show_email_verification_view(e, ""))
+                            return
+
                         self._vault_master_password = password
                         if self.on_login_success and self.local_auth.auth_token:
                             self.on_login_success(self.local_auth.auth_token)
@@ -1045,13 +1204,8 @@ class LoginApp:
                 logging.info("[OK] Utilizador registado: %s", SecurityValidator.mask_email(email))
                 user_name = username
 
-                if response_data and isinstance(response_data, dict) and "verificationToken" in response_data:
-                    token = response_data["verificationToken"]
-                    email_success, email_msg = EmailVerification.send_verification_email(email, token, user_name)
-                    if email_success:
-                        logging.info("[OK] Email de verificação enviado para: %s", SecurityValidator.mask_email(email))
-                    else:
-                        logging.warning("[AVISO] Falha ao enviar email: %s", email_msg)
+                # O servidor já envia o email de verificação automaticamente no registo.
+                # Apenas prosseguir para verificação SMS.
 
                 sms_code, sms_message = SMSVerification.generate_sms_code(phone_number)
 
