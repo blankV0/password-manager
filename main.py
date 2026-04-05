@@ -320,6 +320,8 @@ class Dashboard(tk.Frame):
         self.on_rebuild = on_rebuild
         self._master_password = master_password
         self._active_btn: tk.Label | None = None
+        self._nav_buttons: dict[str, dict] = {}
+        self._active_tela: str = ""
         
         # Sidebar
         self.sidebar = tk.Frame(self, bg=self.tc["sidebar"], width=210)
@@ -335,22 +337,22 @@ class Dashboard(tk.Frame):
         self.logo.bind("<Button-1>", lambda e: self.mudar_tela("Inicio"))
         
         # Navegação principal
-        self.criar_botao("\U0001f510  Gerenciador", lambda: self.mudar_tela("Gerenciador"))
-        self.criar_botao("\U0001f511  Gerador", lambda: self.mudar_tela("Gerador"))
-        self.criar_botao("\U0001f50d  Verificador", lambda: self.mudar_tela("Verificador"))
+        self.criar_botao("\U0001f510  Gerenciador", lambda: self.mudar_tela("Gerenciador"), tela="Gerenciador")
+        self.criar_botao("\U0001f511  Gerador", lambda: self.mudar_tela("Gerador"), tela="Gerador")
+        self.criar_botao("\U0001f50d  Verificador", lambda: self.mudar_tela("Verificador"), tela="Verificador")
         
         # Espaçador flexível — empurra os botões abaixo para o fundo
         spacer = tk.Frame(self.sidebar, bg=self.tc["sidebar"])
         spacer.pack(fill="both", expand=True)
         
         # Botões inferiores
-        self.criar_botao("👤  Utilizador", lambda: self.mudar_tela("Utilizador"))
-        self.criar_botao("📜  Políticas", lambda: self.mudar_tela("Políticas"))
-        self.criar_botao("⚙  Definições", lambda: self.mudar_tela("Definições"))
+        self.criar_botao("👤  Utilizador", lambda: self.mudar_tela("Utilizador"), tela="Utilizador")
+        self.criar_botao("📜  Políticas", lambda: self.mudar_tela("Políticas"), tela="Políticas")
+        self.criar_botao("⚙  Definições", lambda: self.mudar_tela("Definições"), tela="Definições")
         
         # Botão admin — apenas visível para admins
         if self.local_auth.is_admin():
-            self.criar_botao("🛡  Admin", lambda: self.mudar_tela("Admin"), destaque=True)
+            self.criar_botao("🛡  Admin", lambda: self.mudar_tela("Admin"), destaque=True, tela="Admin")
         
         # Logout
         self.criar_botao("🚪  Logout", self.on_logout, vermelho=True)
@@ -364,6 +366,7 @@ class Dashboard(tk.Frame):
 
     def mudar_tela(self, nome_tela: str) -> None:
         """Muda a tela exibida."""
+        self._highlight_active(nome_tela)
         for widget in self.main_container.winfo_children():
             widget.destroy()
         
@@ -434,38 +437,72 @@ class Dashboard(tk.Frame):
         if self.on_rebuild:
             self.on_rebuild()
 
-    def criar_botao(self, texto: str, comando, vermelho: bool = False, destaque: bool = False) -> tk.Label:
+    def _highlight_active(self, nome_tela: str) -> None:
+        """Realça o botão da página ativa na sidebar."""
+        self._active_tela = nome_tela
+        sidebar_bg = self.tc["sidebar"]
+        accent = self.tc.get("accent", "#7289DA")
+        for tela, info in self._nav_buttons.items():
+            if tela == nome_tela:
+                info["btn"].config(bg=info["active_bg"], fg="white")
+                info["container"].config(bg=accent)
+            else:
+                info["btn"].config(bg=info["bg"], fg=info["fg"])
+                info["container"].config(bg=sidebar_bg)
+
+    def criar_botao(self, texto: str, comando, vermelho: bool = False, destaque: bool = False, tela: str = "") -> tk.Label:
         """Cria um botão no sidebar."""
         sidebar_bg = self.tc["sidebar"]
+        accent = self.tc.get("accent", "#7289DA")
+        active_bg = "#3E4248" if sidebar_bg == "#2C2F33" else "#D0D3DA"
         if vermelho:
             cor_bg = "#FF4D4D"
             cor_fg = "white"
             cor_hover = "#E63B3B"
         elif destaque:
             cor_bg = sidebar_bg
-            cor_fg = self.tc["accent"]
+            cor_fg = accent
             cor_hover = "#393C43" if sidebar_bg == "#2C2F33" else "#2C2E33"
         else:
             cor_bg = sidebar_bg
             cor_fg = self.tc["sidebar_text"]
             cor_hover = "#393C43" if sidebar_bg == "#2C2F33" else "#2C2E33"
-        
+
+        # Container com gap de 3 px à esquerda — mostra tira de acento
+        container = tk.Frame(self.sidebar, bg=sidebar_bg, cursor="hand2")
+        container.pack(fill="x", side="top")
+
         btn = tk.Label(
-            self.sidebar, text=texto, bg=cor_bg, fg=cor_fg,
-            font=("Segoe UI", 11), anchor="w", padx=20, pady=12, cursor="hand2",
+            container, text=texto, bg=cor_bg, fg=cor_fg,
+            font=("Segoe UI", 11), anchor="w", padx=17, pady=12, cursor="hand2",
         )
-        
+        btn.pack(fill="both", expand=True, padx=(3, 0))
+
+        # Guardar referência para controlo de estado ativo
+        if tela:
+            self._nav_buttons[tela] = {
+                "btn": btn, "container": container,
+                "bg": cor_bg, "fg": cor_fg, "hover": cor_hover,
+                "active_bg": active_bg,
+            }
+
         def on_enter(e):
+            if tela and self._active_tela == tela:
+                return  # Não alterar o botão ativo ao fazer hover
             btn.config(bg=cor_hover, fg="white")
-        
+            container.config(bg=cor_hover)
+
         def on_leave(e):
+            if tela and self._active_tela == tela:
+                return  # Manter o botão ativo realçado
             btn.config(bg=cor_bg, fg=cor_fg)
-        
+            container.config(bg=sidebar_bg)
+
         btn.bind("<Enter>", on_enter)
         btn.bind("<Leave>", on_leave)
-        btn.bind("<Button-1>", lambda e: comando())
-        
-        btn.pack(fill="x", side="top")
+        for w in (btn, container):
+            w.bind("<Button-1>", lambda e: comando())
+
         return btn
 
 
