@@ -1,186 +1,174 @@
 import tkinter as tk
-from tkinter import filedialog #para abir a seleçao de ficheiro
+from tkinter import filedialog  # para abrir a seleção de ficheiro
+from tkinter import messagebox
 import json
-import shutil #para copiar ficheiros
-import os #para ver se tem ficheiros
+import logging
 import string
 
 
 class utilizador(tk.Frame):
-    def __init__(self, master, caminho_ficheiro="passwords.json"):
+    def __init__(self, master, *, local_auth=None, master_password=""):
         super().__init__(master, bg="white")
-        self.caminho_ficheiro = caminho_ficheiro #guarda o caminho do ficheiro
+        self.local_auth = local_auth
+        self._master_password = master_password
+        self._vault = None
 
-        #estilos dos botoes
+        # estilos dos botoes
         self.btn_preto = {"bg": "#2C2F33", "fg": "white", "font": ("Segoe UI", 9, "bold"), "relief": "flat", "cursor": "hand2"}
         self.btn_cinza = {"bg": "#E9ECEF", "fg": "#2C2F33", "font": ("Segoe UI", 9, "bold"), "relief": "flat", "cursor": "hand2"}
         self.btn_vermelho = {"bg": "#FF4D4D", "fg": "white", "font": ("Segoe UI", 9, "bold"), "relief": "flat", "cursor": "hand2"}
 
-        total, fracas, repetidas, forte = self.analisar_passwords() #faz como no inico mesma coisa
+        # Inicializar vault e obter estatísticas
+        total, fracas, repetidas, forte = self._analisar_vault()
 
-        #Estatiscas / cartoes 
+        # Estatísticas / cartões
         tk.Label(self, text="ESTATÍSTICAS", font=("Segoe UI", 8, "bold"), bg="white", fg="#999").pack(anchor="w", pady=(10, 8))
 
         frame_stats = tk.Frame(self, bg="white")
         frame_stats.pack(fill="x", pady=(0, 20))
 
-        self._criar_card(frame_stats, "CONTAS", str(total), "#2C2F33", 0) #cartao total de contas
-        self._criar_card(frame_stats, "SEGURAS", str(forte), "#2EB872", 1) #cartao de senhas seguras
-        self._criar_card(frame_stats, "INSEGURAS", str(fracas), "#FF4D4D", 2) #cartao de senhas inseguras
-        self._criar_card(frame_stats, "REPETIDAS", str(repetidas), "#FFA64D", 3) #cartoa de senhas iguais
+        self._criar_card(frame_stats, "CONTAS", str(total), "#2C2F33", 0)
+        self._criar_card(frame_stats, "SEGURAS", str(forte), "#2EB872", 1)
+        self._criar_card(frame_stats, "INSEGURAS", str(fracas), "#FF4D4D", 2)
+        self._criar_card(frame_stats, "REPETIDAS", str(repetidas), "#FFA64D", 3)
 
         for i in range(4):
-            frame_stats.columnconfigure(i, weight=1) # para os cortoes terem as medidas iguais
+            frame_stats.columnconfigure(i, weight=1)
 
-        #Gestao de dados
+        # Gestão de dados
         tk.Label(self, text="GESTÃO DE DADOS", font=("Segoe UI", 8, "bold"), bg="white", fg="#999").pack(anchor="w", pady=(0, 8))
 
         frame_gestao = tk.Frame(
             self, bg="white", highlightthickness=1, highlightbackground="#E9ECEF")
         frame_gestao.pack(fill="x", pady=(0, 20))
 
-        self._criar_linha_acao(frame_gestao, "Exportar Base de Dados", "Guarda uma cópia da base de dados no teu computador.", "EXPORTAR", self.btn_preto, self.exportar)
+        self._criar_linha_acao(frame_gestao, "Exportar Vault", "Exporta todas as passwords do vault para um ficheiro JSON local.", "EXPORTAR", self.btn_preto, self.exportar)
 
-        tk.Frame(frame_gestao, bg="#E9ECEF", height=1).pack(fill="x", padx=15) # a linha para separar
+        tk.Frame(frame_gestao, bg="#E9ECEF", height=1).pack(fill="x", padx=15)
 
-        self._criar_linha_acao(frame_gestao, "Importar Base de Dados", "Substitui a base de dados atual por um ficheiro externo.", "IMPORTAR", self.btn_cinza, self.importar)
+        self._criar_linha_acao(frame_gestao, "Apagar Todos os Dados do Vault", "Remove permanentemente todas as passwords guardadas no vault.", "APAGAR TUDO", self.btn_vermelho, self.apagar_tudo)
 
-        tk.Frame(frame_gestao, bg="#E9ECEF", height=1).pack(fill="x", padx=15) # a linha para separar
+    def _analisar_vault(self):
+        """Analisa as entries do vault para calcular estatísticas."""
+        if not self.local_auth or not self._master_password:
+            return 0, 0, 0, 0
 
-        self._criar_linha_acao(frame_gestao, "Apagar Todos os Dados", "Remove permanentemente todas as passwords guardadas.", "APAGAR", self.btn_vermelho, self.apagar_tudo)
+        try:
+            from src.ui.vault_gui import VaultService
+            self._vault = VaultService(self.local_auth, self._master_password)
+            ok, msg = self._vault.initialize()
+            if not ok:
+                logging.warning("[UTILIZADOR] Vault init falhou: %s", msg)
+                return 0, 0, 0, 0
 
-    #cartoes
+            entries = self._vault.list_entries()
+            total = len(entries)
+            if total == 0:
+                return 0, 0, 0, 0
+
+            fracas = 0
+            lista_passwords = []
+            for entry in entries:
+                p = entry.password
+                if p:
+                    lista_passwords.append(p)
+                    tem_num = any(c.isdigit() for c in p)
+                    tem_sym = any(c in string.punctuation for c in p)
+                    if len(p) < 8 or not tem_num or not tem_sym:
+                        fracas += 1
+
+            repetidas = 0
+            for p in set(lista_passwords):
+                count = lista_passwords.count(p)
+                if count > 1:
+                    repetidas += count
+
+            forte = total - fracas
+            return total, fracas, repetidas, forte
+        except Exception as e:
+            logging.warning("[UTILIZADOR] Falha ao analisar vault: %s", e)
+            return 0, 0, 0, 0
+
+    # cartões
     def _criar_card(self, parent, titulo, valor, cor, coluna):
         card = tk.Frame(parent, bg="#F8F9FA", highlightthickness=1, highlightbackground="#E9ECEF")
-        card.grid(row=0, column=coluna, padx=(0, 10) if coluna < 3 else 0, sticky="ew", ipady=10) #para posicionar o cartao na grelha
+        card.grid(row=0, column=coluna, padx=(0, 10) if coluna < 3 else 0, sticky="ew", ipady=10)
 
-        tk.Label(card, text=titulo, font=("Segoe UI", 7, "bold"), bg="#F8F9FA", fg="#999").pack(pady=(10, 2)) #titulo do cartao
-        tk.Label(card, text=valor, font=("Segoe UI", 20, "bold"), bg="#F8F9FA", fg=cor).pack() # valor do cartao
-        tk.Label(card, text="", bg="#F8F9FA").pack(pady=(2, 8)) 
-    #dados
+        tk.Label(card, text=titulo, font=("Segoe UI", 7, "bold"), bg="#F8F9FA", fg="#999").pack(pady=(10, 2))
+        tk.Label(card, text=valor, font=("Segoe UI", 20, "bold"), bg="#F8F9FA", fg=cor).pack()
+        tk.Label(card, text="", bg="#F8F9FA").pack(pady=(2, 8))
+
+    # dados
     def _criar_linha_acao(self, parent, titulo, descricao, btn_texto, btn_style, comando):
         frame = tk.Frame(parent, bg="white")
         frame.pack(fill="x", padx=15, pady=12)
 
-        tk.Label(frame, text=titulo, font=("Segoe UI", 10, "bold"), bg="white", fg="#2C2F33").pack(anchor="w") # titulo
-        tk.Label(frame, text=descricao, font=("Segoe UI", 9), bg="white", fg="#999").pack(anchor="w", pady=(2, 8)) #descriçao
-        tk.Button(frame, text=btn_texto, command=comando, **btn_style, padx=15, pady=6).pack(anchor="w")#botoes
-
-    #Avisos(Cuidado deu so problemas mais valia ter feito a parte)
-    def setup_move(self, window, widget):
-        def start_move(event):
-            window.offset_x = event.x_root - window.winfo_x() #calcula quando mexe horizontals
-            window.offset_y = event.y_root - window.winfo_y() #calcula a quando mexe vertical
-
-        def do_move(event):
-            window.geometry(f"+{event.x_root - window.offset_x}+{event.y_root - window.offset_y}") #mover a janela com rato
-        widget.bind("<Button-1>", start_move) #quando clica ele ja se pode mexer
-        widget.bind("<B1-Motion>", do_move) #ao mexer o rato a janela mexe 
-
-    def aviso(self, titulo, mensagem):
-        janela = tk.Toplevel(self)#cria uma janela
-        janela.overrideredirect(True) #remove as bordas padrao da janela
-        w, h = 320, 160 #dimençoes da janela 
-        sw, sh = janela.winfo_screenwidth(), janela.winfo_screenheight() #ve as dimensoes do ecra
-        janela.geometry(f"{w}x{h}+{(sw//2)-(w//2)}+{(sh//2)-(h//2)}") #centra conforme o ecra
-        janela.config(bg="white", highlightthickness=1, highlightbackground="#E9ECEF")
-        janela.grab_set()
-        container = tk.Frame(janela, bg="white", padx=25, pady=25)
-        container.pack(fill="both", expand=True)
-        self.setup_move(janela, container) #premite mexer a janela
-        tk.Label(container, text=titulo, font=("Segoe UI", 10, "bold"), bg="white", fg="#2C2F33").pack(anchor="w")# titulo do aviso
-        tk.Label(container, text=mensagem, font=("Segoe UI", 9), bg="white", fg="#666", wraplength=250, justify="left").pack(anchor="w", pady=10) #mensagem
-        tk.Button(container, text="OK", command=janela.destroy, **self.btn_preto, width=10).pack(side="bottom", anchor="e") #botao para fechar
-
-    def confirmar(self, titulo, mensagem, callback):
-        janela = tk.Toplevel(self)#cria uma janela
-        janela.overrideredirect(True)#remove as bordas da janela
-        w, h = 350, 180 #tamanho da janela
-        sw, sh = janela.winfo_screenwidth(), janela.winfo_screenheight()#ve as dimensoes do ecra
-        janela.geometry(f"{w}x{h}+{(sw//2)-(w//2)}+{(sh//2)-(h//2)}")#centra conforme o ecra
-        janela.config(bg="white", highlightthickness=1, highlightbackground="#E9ECEF")
-        janela.grab_set() 
-        container = tk.Frame(janela, bg="white", padx=25, pady=25)
-        container.pack(fill="both", expand=True)
-        self.setup_move(janela, container)#premite mexer a janela
-        tk.Label(container, text=titulo, font=("Segoe UI", 10, "bold"), bg="white", fg="#2C2F33").pack(anchor="w") #titulo 
-        tk.Label(container, text=mensagem, font=("Segoe UI", 9), bg="white", fg="#666", wraplength=280, justify="left").pack(anchor="w", pady=(10, 20)) #mensagem
-        btn_frame = tk.Frame(container, bg="white")
-        btn_frame.pack(side="bottom", fill="x")
-
-        def acao_sim():
-            janela.destroy() #fechar a janela
-            callback()#executa a açao
-        tk.Button(btn_frame, text="SIM", command=acao_sim, **self.btn_vermelho, width=10).pack(side="right", padx=5) #botao para confirmar
-        tk.Button(btn_frame, text="NÃO", command=janela.destroy, **self.btn_cinza, width=10).pack(side="right") #botao para cancelar
-
-    #analisa as senhas
-    def analisar_passwords(self):
-        try:
-            with open(self.caminho_ficheiro, "r", encoding="utf-8") as f:
-                dados = json.load(f) # carrega os dados do ficheiro 
-            if not isinstance(dados, list):
-                return 0, 0, 0, 0 #devovle zero se nao tiver nada no ficheiro
-            total = len(dados) #conta o total de contas
-            lista_pass = [item["password"] for item in dados] #extrais as senhas
-            fracas = sum(
-                1 for p in lista_pass
-                if len(p) < 8 or not any(c.isdigit() for c in p)
-                or not any(c in string.punctuation for c in p) # ve os criteiros de força
-            )
-            repetidas = sum(lista_pass.count(p) for p in set(lista_pass) if lista_pass.count(p) > 1)# ve as senhas repetidas
-            forte = total - fracas
-            return total, fracas, repetidas, forte
-        except:
-            return 0, 0, 0, 0 #devolve zeros se der algum erro
+        tk.Label(frame, text=titulo, font=("Segoe UI", 10, "bold"), bg="white", fg="#2C2F33").pack(anchor="w")
+        tk.Label(frame, text=descricao, font=("Segoe UI", 9), bg="white", fg="#999").pack(anchor="w", pady=(2, 8))
+        tk.Button(frame, text=btn_texto, command=comando, **btn_style, padx=15, pady=6).pack(anchor="w")
 
     def exportar(self):
-        if not os.path.exists(self.caminho_ficheiro):
-            self.aviso("AVISO", "Não existe nenhuma base de dados para exportar.")
-            return #sai se o ficheiro nao exixtir
+        """Exporta os dados do vault para um ficheiro JSON local."""
+        if not self._vault:
+            messagebox.showwarning("Aviso", "Vault não inicializado.")
+            return
+
+        entries = self._vault.list_entries()
+        if not entries:
+            messagebox.showinfo("Aviso", "Não existem passwords para exportar.")
+            return
+
         destino = filedialog.asksaveasfilename(
             defaultextension=".json",
             filetypes=[("Ficheiro JSON", "*.json")],
-            title="Guardar cópia"
-        )# abre a janela para escolher onde guardar
+            title="Guardar cópia do vault"
+        )
         if destino:
             try:
-                shutil.copy2(self.caminho_ficheiro, destino) #copia o ficheiro para o sitio escolhido
-                self.aviso("SUCESSO", "Base de dados exportada com sucesso!")
-            except Exception as e: 
-                self.aviso("ERRO", f"Não foi possível exportar: {e}") # mostra o erro se a copia falhar
-
-    def importar(self):
-        origem = filedialog.askopenfilename(         # abre a janela para escolher o ficheiro
-            filetypes=[("Ficheiro JSON", "*.json")],
-            title="Selecionar ficheiro"
-        ) 
-        if not origem:
-            return # sai se nao tiver escolhido nehum ficheiro
-        try:
-            with open(origem, "r", encoding="utf-8") as f:
-                dados = json.load(f) #le o ficheiro selecionado
-            if not isinstance(dados, list):
-                self.aviso("ERRO", "O ficheiro selecionado não é válido.")
-                return #sai se o ficheiro nao for valido
-
-            def fazer_importacao():
-                shutil.copy2(origem, self.caminho_ficheiro) #subestitui a base dados pela escolhida
-                self.aviso("SUCESSO", "Base de dados importada com sucesso!")
-            self.confirmar("IMPORTAR", "Isto irá substituir todos os dados atuais. Tens a certeza?", fazer_importacao)
-        except Exception as e:
-            self.aviso("ERRO", f"Não foi possível importar: {e}") #mostra o erro se falahar a importaçao
+                export_data = []
+                for entry in entries:
+                    export_data.append({
+                        "site": entry.site,
+                        "username": entry.username,
+                        "password": entry.password,
+                        "notes": entry.notes,
+                    })
+                with open(destino, "w", encoding="utf-8") as f:
+                    json.dump(export_data, f, indent=2, ensure_ascii=False)
+                messagebox.showinfo("Sucesso", "Vault exportado com sucesso!")
+            except Exception as e:
+                messagebox.showerror("Erro", f"Não foi possível exportar: {e}")
 
     def apagar_tudo(self):
-        if not os.path.exists(self.caminho_ficheiro):
-            self.aviso("AVISO", "Não existe nenhuma base de dados para apagar.")
-            return #sai caso o ficheiro nao exixta
+        """Apaga TODAS as passwords do vault do utilizador atual (via API)."""
+        if not self.local_auth:
+            messagebox.showwarning("Aviso", "Não autenticado.")
+            return
 
-        def fazer_apagar():
-            try:
-                with open(self.caminho_ficheiro, "w", encoding="utf-8") as f:
-                    json.dump([], f) #subestitui o conteudo por uma lista vazia
-                self.aviso("SUCESSO", "Todos os dados foram apagados.")
-            except Exception as e:
-                self.aviso("ERRO", f"Não foi possível apagar: {e}") #mostra erro se o apaga nao funcionar
-        self.confirmar("APAGAR TUDO", "Esta ação é irreversível. Todos os dados serão eliminados permanentemente. Tens a certeza?", fazer_apagar)
+        confirm = messagebox.askyesno(
+            "⚠ Apagar Tudo",
+            "ATENÇÃO: Esta ação é IRREVERSÍVEL!\n\n"
+            "Todas as passwords do vault serão eliminadas permanentemente.\n\n"
+            "Tens a certeza?",
+        )
+        if not confirm:
+            return
+
+        confirm2 = messagebox.askyesno(
+            "Última Confirmação",
+            "Esta é a última confirmação.\n\nApagar todas as passwords do vault?",
+        )
+        if not confirm2:
+            return
+
+        try:
+            result = self.local_auth.vault_delete_all_entries()
+            msg = result.get("message", "Dados apagados.")
+            messagebox.showinfo("Sucesso", msg)
+            logging.info("[UTILIZADOR] Vault limpo: %s", msg)
+            # Refresh stats - rebuild the page
+            for w in self.winfo_children():
+                w.destroy()
+            self.__init__(self.master, local_auth=self.local_auth, master_password=self._master_password)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao apagar: {e}")

@@ -493,6 +493,38 @@ class LocalAuth:
             return True, message, data.get("logs", [])
         return False, message, None
 
+    def admin_delete_user(self, email: str) -> Tuple[bool, str]:
+        """Admin: elimina permanentemente a conta de um utilizador."""
+        success, message, _ = self._api_post(
+            "/auth/admin/user/delete",
+            {"email": email},
+        )
+        return success, message
+
+    def delete_own_account(self) -> Tuple[bool, str]:
+        """Utilizador elimina a sua própria conta e todos os dados."""
+        if self.disabled:
+            return False, "API não configurada."
+        try:
+            response = self.session.delete(
+                self._api_url("/auth/account/delete"),
+                headers=self._headers(),
+                timeout=API_TIMEOUT,
+                verify=self._get_verify(),
+            )
+            data: Dict[str, Any] = {}
+            if response.content:
+                try:
+                    data = response.json()
+                except ValueError:
+                    data = {}
+            if response.ok:
+                return True, data.get("message", "Conta eliminada.")
+            message = data.get("message") or data.get("detail") or f"HTTP {response.status_code}"
+            return False, message
+        except RequestException as e:
+            return False, f"Erro de ligação: {str(e)}"
+
     def login_by_phone(self, phone_number: str, password: str) -> Tuple[bool, str]:
         """
         Faz login com telemóvel e password.
@@ -723,6 +755,10 @@ class LocalAuth:
     def vault_delete_entry(self, entry_id: str) -> Dict[str, Any]:
         """DELETE /vault/entries/{id} — delete an encrypted entry."""
         return self._vault_request("DELETE", f"/vault/entries/{entry_id}")
+
+    def vault_delete_all_entries(self) -> Dict[str, Any]:
+        """DELETE /vault/entries — delete ALL encrypted entries for current user."""
+        return self._vault_request("DELETE", "/vault/entries")
 
     def _vault_request(
         self,

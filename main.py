@@ -316,8 +316,8 @@ class Dashboard(tk.Frame):
         
         # Logo
         self.logo = tk.Label(
-            self.sidebar, text="Passwords :D", bg=self.tc["sidebar"], fg="#FFFFFF",
-            font=("Segoe UI", 18, "bold"), anchor="w", padx=20, pady=15, cursor="hand2",
+            self.sidebar, text="Password Manager", bg=self.tc["sidebar"], fg="#FFFFFF",
+            font=("Segoe UI", 16, "bold"), anchor="w", padx=20, pady=15, cursor="hand2",
         )
         self.logo.pack(fill="x")
         self.logo.bind("<Button-1>", lambda e: self.mudar_tela("Inicio"))
@@ -369,7 +369,11 @@ class Dashboard(tk.Frame):
         # Conteúdo
         page = None
         if nome_tela == "Inicio":
-            page = inicio(self.main_container)
+            page = inicio(
+                self.main_container,
+                local_auth=self.local_auth,
+                master_password=self._master_password,
+            )
         elif nome_tela == "Vault":
             page = VaultPage(
                 self.main_container,
@@ -386,13 +390,19 @@ class Dashboard(tk.Frame):
         elif nome_tela == "Verificador":
             page = verificador(self.main_container)
         elif nome_tela == "Utilizador":
-            page = utilizador(self.main_container)
+            page = utilizador(
+                self.main_container,
+                local_auth=self.local_auth,
+                master_password=self._master_password,
+            )
         elif nome_tela == "Políticas":
             page = politicas(self.main_container)
         elif nome_tela == "Definições":
             page = SettingsPage(
                 self.main_container,
                 on_theme_changed=self._on_theme_changed,
+                local_auth=self.local_auth,
+                on_logout=self.on_logout,
             )
         elif nome_tela == "Admin":
             page = AdminPanel(

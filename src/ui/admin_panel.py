@@ -112,7 +112,8 @@ class AdminPanel(tk.Frame):
             ("🔄  Atualizar lista", self.c["accent"], self._refresh_users),
             ("✅  Ativar", self.c["success"], lambda: self._set_active(True)),
             ("🚫  Desativar", self.c["danger"], lambda: self._set_active(False)),
-            ("🔑  Reset password", "#f59e0b", self._reset_password),
+            ("�  Eliminar", "#dc2626", self._delete_user),
+            ("�🔑  Reset password", "#f59e0b", self._reset_password),
             ("📋  Ver logs", self.c["border"], self._show_logs),
         ]
         for text, bg_color, cmd in buttons:
@@ -274,6 +275,42 @@ class AdminPanel(tk.Frame):
             messagebox.showinfo("Sucesso", "Password alterada com sucesso.")
             logging.info("[ADMIN] Password reset para: %s", email)
             self.new_password.delete(0, tk.END)
+        else:
+            messagebox.showerror("Erro", message)
+
+    def _delete_user(self) -> None:
+        """Elimina permanentemente a conta de um utilizador."""
+        email = self.target_email.get().strip()
+        if not email:
+            messagebox.showerror("Erro", "Insira o email do utilizador.")
+            return
+
+        confirm = messagebox.askyesno(
+            "⚠ Eliminar Conta",
+            f"ATENÇÃO: Esta ação é IRREVERSÍVEL!\n\n"
+            f"Todos os dados do utilizador serão eliminados:\n"
+            f"  • Conta e credenciais\n"
+            f"  • Todas as passwords do vault\n"
+            f"  • Tokens e verificações\n\n"
+            f"Eliminar permanentemente:\n{email}?",
+        )
+        if not confirm:
+            return
+
+        # Segunda confirmação
+        confirm2 = messagebox.askyesno(
+            "Confirmar Eliminação",
+            f"Última confirmação.\nEliminar {email} permanentemente?",
+        )
+        if not confirm2:
+            return
+
+        success, message = self.local_auth.admin_delete_user(email)
+        if success:
+            messagebox.showinfo("Sucesso", f"Conta {email} eliminada permanentemente.")
+            logging.info("[ADMIN] Conta eliminada: %s", email)
+            self.target_email.delete(0, tk.END)
+            self._refresh_users()
         else:
             messagebox.showerror("Erro", message)
 

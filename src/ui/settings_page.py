@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src import __version__
+from src.models.local_auth import LocalAuth
 
 # ── Ficheiro de preferências local ───────────────────────────────────────────
 _PREFS_PATH = Path(__file__).resolve().parents[2] / "data" / "preferences.json"
@@ -271,12 +272,16 @@ class SettingsPage(tk.Frame):
         self,
         master: tk.Widget,
         on_theme_changed: Optional[Callable[[str], None]] = None,
+        local_auth: Optional[LocalAuth] = None,
+        on_logout: Optional[Callable] = None,
     ):
         self.prefs = _load_prefs()
         self._theme = self.prefs.get("theme", "light")
         self.c = get_theme_colors(self._theme)
         super().__init__(master, bg=self.c["bg"])
         self.on_theme_changed = on_theme_changed
+        self.local_auth = local_auth
+        self.on_logout = on_logout
 
         # ── Variáveis Tk ─────────────────────────────────────────────
         self.var_theme = tk.StringVar(value=self._theme)
@@ -397,6 +402,34 @@ class SettingsPage(tk.Frame):
             tk.Label(row, text=val, font=("Segoe UI", 10),
                      bg=self.c["card"], fg=self.c["muted"], anchor="w").pack(side="left")
 
+        # ── Secção: Zona de Perigo ──────────────────────────────────
+        if self.local_auth and not self.local_auth.is_admin():
+            self._section(parent, "⚠ Zona de Perigo")
+            danger_card = tk.Frame(
+                parent, bg=self.c["card"],
+                highlightthickness=2,
+                highlightbackground=self.c["danger"],
+                padx=16, pady=12,
+            )
+            danger_card.pack(fill="x", pady=(0, 8))
+            self._label(danger_card, "Apagar a minha conta")
+            tk.Label(
+                danger_card,
+                text="Esta ação é IRREVERSÍVEL. A tua conta, todas as passwords\n"
+                     "do vault e todos os dados associados serão eliminados permanentemente.",
+                font=("Segoe UI", 9),
+                bg=self.c["card"], fg=self.c["danger"],
+                justify="left",
+            ).pack(anchor="w")
+            del_btn = tk.Label(
+                danger_card, text="🗑  Eliminar a minha conta",
+                font=("Segoe UI", 10, "bold"),
+                bg=self.c["danger"], fg="white",
+                padx=16, pady=8, cursor="hand2",
+            )
+            del_btn.pack(anchor="w", pady=(10, 0))
+            del_btn.bind("<Button-1>", lambda e: self._delete_own_account())
+
         # ── Botão guardar ────────────────────────────────────────────
         save_frame = tk.Frame(parent, bg=self.c["bg"])
         save_frame.pack(fill="x", pady=(20, 10))
@@ -486,6 +519,39 @@ class SettingsPage(tk.Frame):
     def _set_theme(self, theme: str) -> None:
         self.var_theme.set(theme)
         self._save()
+
+    def _delete_own_account(self) -> None:
+        """Permite ao utilizador eliminar a sua própria conta."""
+        if not self.local_auth:
+            return
+
+        confirm = messagebox.askyesno(
+            "⚠ Eliminar Conta",
+            "ATENÇÃO: Esta ação é IRREVERSÍVEL!\n\n"
+            "Todos os teus dados serão eliminados:\n"
+            "  • A tua conta e credenciais\n"
+            "  • Todas as passwords do vault\n"
+            "  • Tokens e verificações\n\n"
+            "Tens a certeza que queres eliminar a tua conta?",
+        )
+        if not confirm:
+            return
+
+        confirm2 = messagebox.askyesno(
+            "Última Confirmação",
+            "Esta é a última confirmação.\n\nEliminar a tua conta permanentemente?",
+        )
+        if not confirm2:
+            return
+
+        success, message = self.local_auth.delete_own_account()
+        if success:
+            messagebox.showinfo("Conta Eliminada", "A tua conta foi eliminada permanentemente.")
+            logging.info("[SETTINGS] Conta própria eliminada.")
+            if self.on_logout:
+                self.on_logout()
+        else:
+            messagebox.showerror("Erro", message)
 
     def _save(self) -> None:
         self.prefs.update({
