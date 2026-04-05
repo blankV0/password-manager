@@ -7,7 +7,7 @@ password e estado de loading no botão de submit.
 """
 
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import logging
 import math
 from datetime import datetime, timedelta
@@ -634,54 +634,33 @@ class LoginApp:
         right_panel = tk.Frame(body, bg=_FORM_BG)
         right_panel.place(relx=_LEFT_RATIO, rely=0, relwidth=1 - _LEFT_RATIO, relheight=1)
 
-        # Scrollable area para o formulário mais longo
-        canvas = tk.Canvas(right_panel, bg=_FORM_BG, highlightthickness=0, bd=0)
-        scrollbar = tk.Scrollbar(right_panel, orient="vertical", command=canvas.yview)
-        scroll_frame = tk.Frame(canvas, bg=_FORM_BG)
-
-        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scroll_frame, anchor="n")
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        # Centrar horizontalmente
-        def _center_scroll(_e=None):
-            cw = canvas.winfo_width()
-            canvas.itemconfigure(1, width=cw)
-        canvas.bind("<Configure>", _center_scroll)
-
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        canvas.bind("<Enter>", lambda _: canvas.bind_all("<MouseWheel>",
-                    lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")))
-        canvas.bind("<Leave>", lambda _: canvas.unbind_all("<MouseWheel>"))
-
-        # Card
-        card = tk.Frame(scroll_frame, bg=_FORM_BG)
-        card.pack(padx=48, pady=(28, 28))
+        # Card — sem scroll, cabe tudo na janela
+        card = tk.Frame(right_panel, bg=_FORM_BG)
+        card.pack(padx=48, pady=(18, 12))
 
         # ── Header ──
-        tk.Label(card, text="Password Manager", font=(_FONT, 12), bg=_FORM_BG, fg=_BRAND_ACCENT).pack(anchor="w")
-        tk.Label(card, text="Criar conta", font=(_FONT, 28, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w", pady=(6, 4))
+        tk.Label(card, text="Password Manager", font=(_FONT, 11), bg=_FORM_BG, fg=_BRAND_ACCENT).pack(anchor="w")
+        tk.Label(card, text="Criar conta", font=(_FONT, 24, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w", pady=(2, 2))
         tk.Label(
-            card, text="Registe-se para começar a gerir os seus\nacessos com segurança.",
-            font=(_FONT, 10), bg=_FORM_BG, fg=_FORM_MUTED, justify="left",
-        ).pack(anchor="w", pady=(0, 24))
+            card, text="Registe-se para começar a gerir os seus acessos com segurança.",
+            font=(_FONT, 9), bg=_FORM_BG, fg=_FORM_MUTED, justify="left",
+        ).pack(anchor="w", pady=(0, 14))
 
         # ── Username ──
-        tk.Label(card, text="Username", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        tk.Label(card, text="Username", font=(_FONT, 9, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
         self.reg_username_entry = _FocusEntry(card, placeholder="johndoe")
-        self.reg_username_entry.pack(fill="x", pady=(6, 12), ipady=8)
+        self.reg_username_entry.pack(fill="x", pady=(4, 8), ipady=6)
 
         # ── Email ──
-        tk.Label(card, text="Email", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        tk.Label(card, text="Email", font=(_FONT, 9, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
         self.reg_email_entry = _FocusEntry(card, placeholder="nome@exemplo.pt")
-        self.reg_email_entry.pack(fill="x", pady=(6, 12), ipady=8)
+        self.reg_email_entry.pack(fill="x", pady=(4, 8), ipady=6)
 
         # ── Password ──
-        tk.Label(card, text="Palavra-passe", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        tk.Label(card, text="Palavra-passe", font=(_FONT, 9, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
 
         pw_row = tk.Frame(card, bg=_FORM_BG)
-        pw_row.pack(fill="x", pady=(6, 0))
+        pw_row.pack(fill="x", pady=(4, 0))
 
         self._reg_pw_field = _PasswordField(pw_row, placeholder="Mínimo 12 caracteres")
         self._reg_pw_field.pack(side="left", fill="x", expand=True)
@@ -696,18 +675,88 @@ class LoginApp:
         gen_btn.bind("<Leave>", lambda e: gen_btn.config(fg=_BRAND_ACCENT))
 
         self._strength_bar = PasswordStrengthBar(card, bg=_FORM_BG)
-        self._strength_bar.pack(fill="x", pady=(4, 12))
+        self._strength_bar.pack(fill="x", pady=(2, 8))
         self._strength_bar.attach(self._reg_pw_field.entry)
 
         # ── Confirmar Password ──
-        tk.Label(card, text="Confirmar Palavra-passe", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+        tk.Label(card, text="Confirmar Palavra-passe", font=(_FONT, 9, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
         self._reg_confirm_field = _PasswordField(card, placeholder="Repetir palavra-passe")
-        self._reg_confirm_field.pack(fill="x", pady=(6, 12))
+        self._reg_confirm_field.pack(fill="x", pady=(4, 8))
 
-        # ── Telemóvel ──
-        tk.Label(card, text="Telemóvel", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
-        self.reg_phone_entry = _FocusEntry(card, placeholder="+351 912 345 678")
-        self.reg_phone_entry.pack(fill="x", pady=(6, 24), ipady=8)
+        # ── Telemóvel com selector de país ──
+        tk.Label(card, text="Telemóvel", font=(_FONT, 9, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
+
+        phone_row = tk.Frame(card, bg=_FORM_BG)
+        phone_row.pack(fill="x", pady=(4, 14))
+
+        # Country code dropdown
+        self._country_codes = [
+            ("🇵🇹 +351", "+351"),
+            ("🇧🇷 +55", "+55"),
+            ("🇪🇸 +34", "+34"),
+            ("🇫🇷 +33", "+33"),
+            ("🇬🇧 +44", "+44"),
+            ("🇩🇪 +49", "+49"),
+            ("🇮🇹 +39", "+39"),
+            ("🇳🇱 +31", "+31"),
+            ("🇧🇪 +32", "+32"),
+            ("🇨🇭 +41", "+41"),
+            ("🇦🇹 +43", "+43"),
+            ("🇮🇪 +353", "+353"),
+            ("🇱🇺 +352", "+352"),
+            ("🇺🇸 +1", "+1"),
+            ("🇨🇦 +1", "+1"),
+            ("🇲🇽 +52", "+52"),
+            ("🇦🇷 +54", "+54"),
+            ("🇨🇴 +57", "+57"),
+            ("🇨🇱 +56", "+56"),
+            ("🇵🇪 +51", "+51"),
+            ("🇻🇪 +58", "+58"),
+            ("🇺🇾 +598", "+598"),
+            ("🇦🇴 +244", "+244"),
+            ("🇲🇿 +258", "+258"),
+            ("🇨🇻 +238", "+238"),
+            ("🇬🇼 +245", "+245"),
+            ("🇸🇹 +239", "+239"),
+            ("🇹🇱 +670", "+670"),
+            ("🇮🇳 +91", "+91"),
+            ("🇨🇳 +86", "+86"),
+            ("🇯🇵 +81", "+81"),
+            ("🇰🇷 +82", "+82"),
+            ("🇦🇺 +61", "+61"),
+            ("🇿🇦 +27", "+27"),
+            ("🇳🇬 +234", "+234"),
+            ("🇪🇬 +20", "+20"),
+            ("🇲🇦 +212", "+212"),
+            ("🇹🇷 +90", "+90"),
+            ("🇷🇺 +7", "+7"),
+            ("🇺🇦 +380", "+380"),
+            ("🇵🇱 +48", "+48"),
+            ("🇷🇴 +40", "+40"),
+            ("🇸🇪 +46", "+46"),
+            ("🇳🇴 +47", "+47"),
+            ("🇩🇰 +45", "+45"),
+            ("🇫🇮 +358", "+358"),
+            ("🇬🇷 +30", "+30"),
+            ("🇭🇷 +385", "+385"),
+            ("🇨🇿 +420", "+420"),
+            ("🇭🇺 +36", "+36"),
+        ]
+
+        self._cc_var = tk.StringVar(value="🇵🇹 +351")
+        cc_combo = ttk.Combobox(
+            phone_row, textvariable=self._cc_var,
+            values=[c[0] for c in self._country_codes],
+            state="readonly", width=10, font=(_FONT, 10),
+        )
+        cc_combo.pack(side="left", ipady=6, padx=(0, 6))
+
+        # Style for combobox
+        style = ttk.Style()
+        style.configure("TCombobox", fieldbackground="#f9fafb", background="#f9fafb")
+
+        self.reg_phone_entry = _FocusEntry(phone_row, placeholder="912 345 678")
+        self.reg_phone_entry.pack(side="left", fill="x", expand=True, ipady=6)
 
         # ── Botão Registar ──
         self._reg_btn = _ActionButton(
@@ -718,12 +767,12 @@ class LoginApp:
 
         # ── Link Voltar ──
         back_link = tk.Label(card, text="← Voltar ao login", font=(_FONT, 10), bg=_FORM_BG, fg=_BRAND_ACCENT, cursor="hand2")
-        back_link.pack(pady=(16, 0))
+        back_link.pack(pady=(10, 0))
         back_link.bind("<Enter>", lambda e: back_link.config(font=(_FONT, 10, "underline")))
         back_link.bind("<Leave>", lambda e: back_link.config(font=(_FONT, 10)))
         back_link.bind("<Button-1>", lambda e: self.show_login_view())
 
-        # Animar o painel direito (right_panel usa place, card usa pack dentro do Canvas)
+        # Animar o painel direito
         _fade_in(right_panel, rely=0)
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -959,13 +1008,19 @@ class LoginApp:
             confirm = self._reg_confirm_field.get_value()
             phone_number = self.reg_phone_entry.get_value()
 
+            # Adicionar código do país ao número
+            if phone_number and not phone_number.startswith("+"):
+                selected = self._cc_var.get()
+                cc = next((c[1] for c in self._country_codes if c[0] == selected), "+351")
+                phone_number = cc + phone_number.lstrip("0")
+
             if not all([username, email, password, confirm, phone_number]):
                 messagebox.showerror("Erro", "Por favor preencha todos os campos, incluindo username!")
                 logging.warning("[AVISO] Registo com campos vazios")
                 return
 
             if not SMSVerification.is_valid_phone(phone_number):
-                messagebox.showerror("Erro", "Número de telemóvel inválido!\nUse: +351912345678 ou 912345678")
+                messagebox.showerror("Erro", "Número de telemóvel inválido!\nSelecione o país e insira o número.")
                 logging.warning("[AVISO] Formato de telemóvel inválido: %s", SecurityValidator.mask_phone(phone_number))
                 return
 
