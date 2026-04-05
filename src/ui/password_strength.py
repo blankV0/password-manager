@@ -24,13 +24,14 @@ class PasswordStrengthBar(tk.Frame):
     de password do formulário, sem duplicar o campo de entrada.
     """
 
-    # Cores por score (0-4 requisitos cumpridos)
+    # Cores por score (0-5 requisitos cumpridos)
     _BAR_COLORS = {
         0: "#E9ECEF",   # vazio
         1: "#FF4D4D",   # muito fraca (vermelho)
         2: "#FF4D4D",   # fraca (vermelho)
         3: "#FFA64D",   # razoável (laranja)
-        4: "#2EB872",   # forte (verde)
+        4: "#A3D977",   # boa (verde claro)
+        5: "#2EB872",   # forte (verde)
     }
 
     _STRENGTH_LABELS = {
@@ -38,12 +39,14 @@ class PasswordStrengthBar(tk.Frame):
         1: ("Muito fraca", "#FF4D4D"),
         2: ("Fraca", "#FF4D4D"),
         3: ("Razoável", "#FFA64D"),
-        4: ("Forte", "#2EB872"),
+        4: ("Boa", "#A3D977"),
+        5: ("Forte", "#2EB872"),
     }
 
     _REQUIREMENTS = {
         "len": "Mínimo 12 caracteres",
         "upp": "Letra maiúscula",
+        "low": "Letra minúscula",
         "num": "Número",
         "sym": "Caracter especial",
     }
@@ -98,6 +101,7 @@ class PasswordStrengthBar(tk.Frame):
         checks = {
             "len": len(password) >= 12,
             "upp": any(c.isupper() for c in password),
+            "low": any(c.islower() for c in password),
             "num": any(c.isdigit() for c in password),
             "sym": any(c in string.punctuation for c in password),
         }
@@ -116,7 +120,7 @@ class PasswordStrengthBar(tk.Frame):
         bar_color = self._BAR_COLORS.get(score, "#E9ECEF")
         self.update_idletasks()
         total_width = self._canvas.winfo_width()
-        filled = int((score / 4) * total_width) if total_width > 1 else 0
+        filled = int((score / 5) * total_width) if total_width > 1 else 0
         self._canvas.coords(self._bar_rect, 0, 0, filled, 6)
         self._canvas.itemconfig(self._bar_rect, fill=bar_color)
 

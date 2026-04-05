@@ -679,11 +679,24 @@ class LoginApp:
 
         # ── Password ──
         tk.Label(card, text="Palavra-passe", font=(_FONT, 10, "bold"), bg=_FORM_BG, fg=_FORM_TEXT).pack(anchor="w")
-        self._reg_pw_field = _PasswordField(card, placeholder="Mínimo 12 caracteres")
-        self._reg_pw_field.pack(fill="x", pady=(6, 4))
+
+        pw_row = tk.Frame(card, bg=_FORM_BG)
+        pw_row.pack(fill="x", pady=(6, 0))
+
+        self._reg_pw_field = _PasswordField(pw_row, placeholder="Mínimo 12 caracteres")
+        self._reg_pw_field.pack(side="left", fill="x", expand=True)
+
+        gen_btn = tk.Label(
+            pw_row, text="🎲", font=(_FONT, 16), bg=_FORM_BG, fg=_BRAND_ACCENT,
+            cursor="hand2", padx=8,
+        )
+        gen_btn.pack(side="right")
+        gen_btn.bind("<Button-1>", lambda _: self._generate_register_password())
+        gen_btn.bind("<Enter>", lambda e: gen_btn.config(fg=_BRAND_ACCENT_HOVER))
+        gen_btn.bind("<Leave>", lambda e: gen_btn.config(fg=_BRAND_ACCENT))
 
         self._strength_bar = PasswordStrengthBar(card, bg=_FORM_BG)
-        self._strength_bar.pack(fill="x", pady=(0, 12))
+        self._strength_bar.pack(fill="x", pady=(4, 12))
         self._strength_bar.attach(self._reg_pw_field.entry)
 
         # ── Confirmar Password ──
@@ -880,6 +893,59 @@ class LoginApp:
 
         # Dar tempo ao UI de mostrar o loading
         self.root.after(100, _do_login)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # LOGIC — Generate password for register
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _generate_register_password(self):
+        """Gera uma password forte e insere no campo de registo."""
+        import random, string as _string
+        chars = _string.ascii_letters + _string.digits + "!@#$%^&*()_+-=[]{}:;<>?"
+        # Garantir que cumpre todos os requisitos
+        pw = [
+            random.choice(_string.ascii_uppercase),
+            random.choice(_string.ascii_lowercase),
+            random.choice(_string.digits),
+            random.choice("!@#$%^&*()_+-=[]{}:;<>?"),
+        ]
+        pw += [random.choice(chars) for _ in range(12)]
+        random.shuffle(pw)
+        generated = "".join(pw)
+
+        # Inserir no campo de password
+        entry = self._reg_pw_field.entry
+        entry._has_real_text = True
+        entry.config(show="●", fg=_FORM_TEXT)
+        entry.delete(0, "end")
+        entry.insert(0, generated)
+
+        # Inserir no campo de confirmação
+        confirm_entry = self._reg_confirm_field.entry
+        confirm_entry._has_real_text = True
+        confirm_entry.config(show="●", fg=_FORM_TEXT)
+        confirm_entry.delete(0, "end")
+        confirm_entry.insert(0, generated)
+
+        # Atualizar barra de força
+        self._strength_bar.update_strength(generated)
+
+        # Mostrar password temporariamente e copiar
+        self._reg_pw_field.entry.config(show="")
+        self._reg_pw_field.toggle_btn.config(text="🙈", fg=_BRAND_ACCENT)
+        self._reg_pw_field._visible = True
+
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(generated)
+        except tk.TclError:
+            pass
+
+        messagebox.showinfo(
+            "Password Gerada",
+            "Password forte gerada e copiada para o clipboard!\n\n"
+            "⚠️ Guarde-a num local seguro antes de continuar.",
+        )
 
     # ══════════════════════════════════════════════════════════════════════════
     # LOGIC — Register

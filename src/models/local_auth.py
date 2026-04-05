@@ -308,7 +308,7 @@ class LocalAuth:
             return False, "Número de telemóvel inválido.", None
 
         success, message, data = self._api_post(
-            "/register",
+            "/auth/register",
             {
                 "email": email,
                 "password": password,
