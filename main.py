@@ -462,7 +462,7 @@ class Dashboard(tk.Frame):
 
 
 def main() -> None:
-    log_dir = Path(__file__).parent / "logs"
+    log_dir = app_root / "logs"
     log_dir.mkdir(exist_ok=True)
 
     configure_logging(APP_LOG_FILE, level=logging.INFO)

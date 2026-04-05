@@ -13,10 +13,14 @@ application never fails on a missing folder at an inconvenient time.
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-APP_ROOT = Path(__file__).resolve().parents[2]
+if getattr(sys, "frozen", False):
+    APP_ROOT = Path(sys.executable).resolve().parent
+else:
+    APP_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = APP_ROOT / "data"
 LOG_DIR = APP_ROOT / "logs"
 DATA_DIR.mkdir(parents=True, exist_ok=True)

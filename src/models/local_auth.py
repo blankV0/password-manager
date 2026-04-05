@@ -15,6 +15,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from src.config.settings import (
+    APP_ROOT,
     APP_LOG_FILE,
     REGISTRATION_LOG_FILE,
     API_BASE_URL,
@@ -97,7 +98,7 @@ class LocalAuth:
         """
         if self._is_localhost():
             return False
-        ca_cert = Path(__file__).resolve().parents[2] / "certs" / "server_ca.pem"
+        ca_cert = APP_ROOT / "certs" / "server_ca.pem"
         if ca_cert.exists():
             return str(ca_cert)
         if self._is_tailscale():

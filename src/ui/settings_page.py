@@ -15,10 +15,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src import __version__
+from src.config.settings import APP_ROOT
 from src.models.local_auth import LocalAuth
 
 # ── Ficheiro de preferências local ───────────────────────────────────────────
-_PREFS_PATH = Path(__file__).resolve().parents[2] / "data" / "preferences.json"
+_PREFS_PATH = APP_ROOT / "data" / "preferences.json"
 
 _DEFAULT_PREFS: dict = {
     "theme": "light",                 # "light" | "dark"
