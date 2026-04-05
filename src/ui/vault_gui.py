@@ -262,9 +262,8 @@ class VaultPage(tk.Frame):
 
         tk.Button(toolbar, text="ADICIONAR", command=self._on_add, **btn_dark).pack(side="left", ipady=8)
         tk.Button(toolbar, text="EDITAR", command=self._on_edit, **btn_dark).pack(side="left", padx=8, ipady=8)
-        tk.Button(toolbar, text="COPIAR PASS", command=self._on_copy_password, **btn_light).pack(side="left", ipady=8)
-        tk.Button(toolbar, text="APAGAR", command=self._on_delete, **btn_light).pack(side="left", padx=8, ipady=8)
-        tk.Button(toolbar, text="ATUALIZAR", command=self._on_refresh, **btn_light).pack(side="left", ipady=8)
+        tk.Button(toolbar, text="APAGAR", command=self._on_delete, **btn_light).pack(side="left", ipady=8)
+        tk.Button(toolbar, text="ATUALIZAR", command=self._on_refresh, **btn_light).pack(side="left", padx=8, ipady=8)
 
         # Search
         search_row = tk.Frame(self, bg=tc["bg"])
@@ -452,10 +451,48 @@ class VaultPage(tk.Frame):
             ("NOTAS", "notes", ""),
         ]:
             tk.Label(dialog, text=label_text, **lbl_style).pack(anchor="w", **pad)
-            ent = tk.Entry(dialog, show=show, **ent_style)
-            ent.pack(fill="x", **pad, pady=(4, 10), ipady=8)
-            if initial:
-                ent.insert(0, getattr(initial, key, ""))
+            if key == "password":
+                pw_row = tk.Frame(dialog, bg="white")
+                pw_row.pack(fill="x", **pad, pady=(4, 10))
+                ent = tk.Entry(pw_row, show=show, **ent_style)
+                ent.pack(side="left", fill="x", expand=True, ipady=8)
+                if initial:
+                    ent.insert(0, getattr(initial, key, ""))
+                # Botão ver/esconder password
+                _pw_visible = {"state": False}
+                def _toggle_pw(e=None, _ent=ent, _btn=None):
+                    _pw_visible["state"] = not _pw_visible["state"]
+                    if _pw_visible["state"]:
+                        _ent.config(show="")
+                        _toggle_btn.config(text="\U0001f648")
+                    else:
+                        _ent.config(show="\u25cf")
+                        _toggle_btn.config(text="\U0001f441\ufe0f")
+                _toggle_btn = tk.Button(
+                    pw_row, text="\U0001f441\ufe0f", command=_toggle_pw,
+                    bg="#E9ECEF", fg="#2C2F33", font=("Segoe UI", 10),
+                    relief="flat", cursor="hand2", padx=8,
+                )
+                _toggle_btn.pack(side="right", padx=(6, 0), ipady=4)
+                if initial:
+                    def _copy_pw(e=None, _ent=ent, _dlg=dialog):
+                        pw = _ent.get().strip()
+                        if pw:
+                            _dlg.clipboard_clear()
+                            _dlg.clipboard_append(pw)
+                            _dlg.update_idletasks()
+                            self.after(30_000, self._clear_clipboard)
+                            self._status.config(text="Password copiada! Clipboard limpo em 30s.", fg="#6c63ff")
+                    tk.Button(
+                        pw_row, text="\U0001f4cb", command=_copy_pw,
+                        bg="#E9ECEF", fg="#2C2F33", font=("Segoe UI", 10),
+                        relief="flat", cursor="hand2", padx=8,
+                    ).pack(side="right", padx=(6, 0), ipady=4)
+            else:
+                ent = tk.Entry(dialog, show=show, **ent_style)
+                ent.pack(fill="x", **pad, pady=(4, 10), ipady=8)
+                if initial:
+                    ent.insert(0, getattr(initial, key, ""))
             fields[key] = ent
 
         result: dict[str, tuple[str, str, str, str] | None] = {"value": None}
